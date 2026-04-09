@@ -7,12 +7,15 @@ from typing import Optional
 
 import requests
 
+from campaign_assistant.config import APP_NAME, APP_VERSION
+
 
 class CampaignDownloadError(RuntimeError):
     """Raised when login or campaign download fails."""
 
 
 def _save_cookies(session: requests.Session, cookie_file: Path) -> None:
+    """Persist session cookies to a local JSON file."""
     cookie_file.parent.mkdir(parents=True, exist_ok=True)
     cookies_dict = requests.utils.dict_from_cookiejar(session.cookies)
     cookie_file.write_text(
@@ -22,6 +25,7 @@ def _save_cookies(session: requests.Session, cookie_file: Path) -> None:
 
 
 def _load_cookies(session: requests.Session, cookie_file: Path) -> bool:
+    """Load session cookies from a local JSON file if possible."""
     if not cookie_file.exists():
         return False
 
@@ -36,6 +40,9 @@ def _load_cookies(session: requests.Session, cookie_file: Path) -> bool:
 
 
 def _validate_xlsx_response(resp: requests.Response) -> None:
+    """
+    Ensure the response looks like an XLSX download rather than HTML or JSON.
+    """
     content_type = resp.headers.get("Content-Type", "")
     content_disposition = resp.headers.get("Content-Disposition", "")
 
@@ -56,9 +63,17 @@ def _download_xlsx_with_session(
     campaign_abbreviation: str,
     timeout_download: int,
 ) -> Optional[Path]:
+    """
+    Download the campaign XLSX using an existing authenticated session.
+
+    Returns:
+        Path to the downloaded XLSX on success,
+        None if the session appears unauthorized/expired.
+    """
     resp = session.post(
         f"{base_url}/api/campaigns/{campaign_abbreviation}/download",
         timeout=timeout_download,
+        stream=True,
     )
 
     if resp.status_code in (401, 403):
@@ -76,7 +91,11 @@ def _download_xlsx_with_session(
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = temp_dir / filename
-    output_path.write_bytes(resp.content)
+    with output_path.open("wb") as f:
+        for chunk in resp.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
     return output_path
 
 
@@ -90,15 +109,16 @@ def download_campaign_xlsx(
     timeout_download: int = 60,
 ) -> Path:
     """
-    Download a campaign description XLSX.
+    Download a GameBus campaign description XLSX.
 
     Strategy:
     1) Try saved cookies first
-    2) If that fails and credentials are available, login and retry
+    2) If that fails and credentials are available, log in and retry
     3) Save refreshed cookies after successful login
     """
     base_url = base_url.strip().rstrip("/")
     campaign_abbreviation = campaign_abbreviation.strip()
+    email = (email or "").strip()
 
     if not base_url:
         raise CampaignDownloadError("Base URL is empty.")
@@ -106,6 +126,9 @@ def download_campaign_xlsx(
         raise CampaignDownloadError("Campaign abbreviation is empty.")
 
     session = requests.Session()
+    session.headers.update(
+        {"User-Agent": f"{APP_NAME}/{APP_VERSION}"}
+    )
 
     # 1) Try existing session cookies first
     if cookie_file is not None and _load_cookies(session, cookie_file):
@@ -128,7 +151,7 @@ def download_campaign_xlsx(
         login_resp = session.post(
             f"{base_url}/api/auth/token",
             json={
-                "email": email.strip(),
+                "email": email,
                 "password": password,
             },
             timeout=timeout_login,

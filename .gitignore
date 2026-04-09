@@ -1,5 +1,11 @@
-venv/
 .idea/
+.venv/
+*.pyc
+.pytest_cache/
+.streamlit/
+outputs/
+*.log
+.samples/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
