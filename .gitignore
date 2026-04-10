@@ -5,7 +5,9 @@
 .streamlit/
 outputs/
 *.log
-.samples/
+samples/
+logs/
+uploads/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

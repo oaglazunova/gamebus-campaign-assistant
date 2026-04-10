@@ -153,6 +153,16 @@ def test_export_excel_creates_report(monkeypatch, tmp_path):
     assert Path(report_path).exists()
     assert Path(report_path).suffix == ".xlsx"
 
+    # Verify legacy format
+    df = pd.read_excel(report_path, sheet_name="Errors")
+    assert list(df.columns) == ["Kind", "Visualization", "Challenge", "Error", "URL"]
+    assert len(df) == 2
+    assert df.iloc[0]["Kind"] == TTMSTRUCTURE
+    assert df.iloc[0]["Visualization"] == "TTM Levels"
+    assert df.iloc[0]["Challenge"] == "Skilled"
+    assert df.iloc[0]["Error"] == "Wrong TTM successor."
+    assert "https://example.com/vis/11/challenge/101" in df.iloc[0]["URL"]
+
 
 def test_crashing_check_is_reported_as_error(monkeypatch, tmp_path):
     monkeypatch.setattr("campaign_assistant.checker.wrapper.CampaignChecker", CrashingChecker)

@@ -95,19 +95,25 @@ def save_settings(settings: Dict[str, Any]) -> None:
     )
 
 
-def add_saved_campaign_abbreviation(abbreviation: str) -> None:
+def add_saved_campaign_abbreviation(
+    abbreviation: str, settings: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """Add a campaign abbreviation to the saved list if it is not already present."""
+    if settings is None:
+        settings = load_settings()
+
     abbreviation = _normalize_abbreviation(abbreviation)
     if not abbreviation:
-        return
+        return settings
 
-    settings = load_settings()
     abbreviations = settings.get("saved_campaign_abbreviations", [])
 
     if abbreviation not in abbreviations:
         abbreviations.append(abbreviation)
         settings["saved_campaign_abbreviations"] = sorted(set(abbreviations))
         save_settings(settings)
+
+    return settings
 
 
 def save_password(email: str, password: str) -> None:

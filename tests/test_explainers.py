@@ -47,6 +47,23 @@ def test_summarize_result_handles_no_failed_checks():
     assert "consistency" in text
 
 
+def test_summarize_result_excludes_excel_link():
+    result = {
+        "file_name": "campaign.xlsx",
+        "summary": {
+            "total_issues": 3,
+            "failed_checks": ["ttm"],
+            "passed_checks": [],
+            "errored_checks": [],
+        },
+        "excel_report_path": "/tmp/issues.xlsx",
+    }
+
+    text = summarize_result(result)
+    assert "Download Excel Report" not in text
+    assert "/tmp/issues.xlsx" not in text
+
+
 def test_explain_ttm_mentions_progression_and_relapse():
     text = explain_ttm().lower()
 

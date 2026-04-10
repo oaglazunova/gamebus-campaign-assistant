@@ -173,31 +173,35 @@ def _issue_from_legacy(
 
 def export_issues_to_excel(issues: List[Issue], output_path: str | Path) -> str:
     """
-    Export normalized issues to an Excel file.
+    Export normalized issues to an Excel file, matching the legacy legacy format.
     """
     output_path = str(output_path)
-    rows = [issue.to_dict() for issue in issues]
+    # Legacy format columns: 'Kind', 'Visualization', 'Challenge', 'Error', 'URL'
+    rows = []
+    for issue in issues:
+        rows.append({
+            "Kind": issue.check,
+            "Visualization": issue.visualization,
+            "Challenge": issue.challenge,
+            "Error": issue.message,
+            "URL": issue.url,
+        })
     df = pd.DataFrame(rows)
 
     if df.empty:
         df = pd.DataFrame(
-            columns=[
-                "check",
-                "severity",
-                "active_wave",
-                "visualization_id",
-                "visualization",
-                "challenge_id",
-                "challenge",
-                "wave_id",
-                "message",
-                "url",
-            ]
+            columns=["Kind", "Visualization", "Challenge", "Error", "URL"]
         )
 
     with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Issues", index=False)
-        worksheet = writer.sheets["Issues"]
+        df.to_excel(writer, sheet_name="Errors", index=False)
+        worksheet = writer.sheets["Errors"]
+
+        (max_row, max_col) = df.shape
+        column_settings = [{"header": column} for column in df.columns]
+        # Add the Excel table structure.
+        worksheet.add_table(0, 0, max_row, max_col - 1, {"columns": column_settings})
+
         worksheet.autofit()
 
     return output_path

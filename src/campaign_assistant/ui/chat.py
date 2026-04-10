@@ -61,12 +61,12 @@ def _suggestion_tail(total_count: int, shown_count: int, single_check_selected: 
 
 	if single_check_selected:
 		lines.append(
-			"\n\nTo see the full list, use **Generate Excel report** and download the Excel file."
+			'\n\nTo see the full list, download the Excel report from the sidebar.'
 		)
 	else:
 		lines.append(
 			"\n\nTo see the full list, either:"
-			"\n- enable **Generate Excel report** and download the Excel file, or"
+			"\n- use the download button in the sidebar, or"
 			"\n- select only **one check** in the sidebar."
 		)
 

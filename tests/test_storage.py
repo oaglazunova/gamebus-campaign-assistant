@@ -56,10 +56,27 @@ def test_add_saved_campaign_abbreviation_normalizes_and_deduplicates(monkeypatch
 
     storage.add_saved_campaign_abbreviation("  TEST  ")
     storage.add_saved_campaign_abbreviation("TEST")
-    storage.add_saved_campaign_abbreviation("ANOTHER")
+    settings = storage.add_saved_campaign_abbreviation("ANOTHER")
+
+    assert settings["saved_campaign_abbreviations"] == ["ANOTHER", "TEST"]
 
     loaded = storage.load_settings()
     assert loaded["saved_campaign_abbreviations"] == ["ANOTHER", "TEST"]
+
+
+def test_add_saved_campaign_abbreviation_with_provided_settings(monkeypatch, tmp_path):
+    _, _, _ = patch_storage_paths(monkeypatch, tmp_path)
+
+    my_settings = storage.DEFAULT_SETTINGS.copy()
+    my_settings["saved_campaign_abbreviations"] = ["EXISTING"]
+
+    result = storage.add_saved_campaign_abbreviation("NEW", settings=my_settings)
+
+    assert result["saved_campaign_abbreviations"] == ["EXISTING", "NEW"]
+    assert my_settings["saved_campaign_abbreviations"] == ["EXISTING", "NEW"]
+
+    loaded = storage.load_settings()
+    assert loaded["saved_campaign_abbreviations"] == ["EXISTING", "NEW"]
 
 
 def test_get_cookie_file_returns_expected_path(monkeypatch, tmp_path):

@@ -129,7 +129,7 @@ def test_build_issue_markdown_list_truncates_and_adds_suggestion_for_multi_check
 
     assert "Wrong TTM successor." in text
     assert "1 more" in text
-    assert "download the Excel file" in text
+    assert "use the download button in the sidebar" in text
     assert "select only **one check** in the sidebar" in text
 
 

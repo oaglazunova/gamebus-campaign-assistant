@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
 
 import streamlit as st
@@ -124,12 +125,31 @@ def render_sidebar() -> Dict[str, Any]:
 				format_func=lambda name: FRIENDLY_CHECK_NAMES.get(name, name),
 			)
 
-			export_excel = st.checkbox(
-				"Generate Excel report",
-				value=False,
-			)
-
 		run_clicked = st.button("Analyze campaign", type="primary", use_container_width=True)
+
+		result = st.session_state.get("result")
+		excel_path_str = result.get("excel_report_path") if result else None
+		excel_path = Path(excel_path_str) if excel_path_str else None
+		total_issues = result.get("summary", {}).get("total_issues", 0) if result else 0
+		
+		if excel_path and excel_path.exists() and total_issues > 0:
+			with open(excel_path, "rb") as f:
+				st.download_button(
+					label="📥 Download Excel Report",
+					data=f,
+					file_name=excel_path.name,
+					mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					use_container_width=True,
+					disabled=False,
+					key="sidebar_download_report",
+				)
+		else:
+			st.button(
+				label="📥 Download Excel Report",
+				disabled=True,
+				use_container_width=True,
+				key="sidebar_download_report_disabled",
+			)
 
 	settings["last_source_mode"] = source_mode
 	save_settings(settings)
@@ -139,5 +159,5 @@ def render_sidebar() -> Dict[str, Any]:
 		"source_mode": source_mode,
 		"uploaded_file": uploaded_file,
 		"selected_checks": selected_checks,
-		"export_excel": export_excel,
+		"export_excel": True,
 	}

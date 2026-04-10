@@ -4,6 +4,8 @@ A local Windows-friendly assistant for checking **GameBus campaign Excel exports
 
 It wraps the existing GameBus campaign checker in a more user-friendly interface and shows results in a **chat-style web app** instead of only as an Excel error report.
 
+![ui_screen.png](docs/ui_screen.png)
+
 ## What this tool does
 
 This app helps campaign editors and researchers inspect a downloaded GameBus campaign Excel file and quickly see:
@@ -42,12 +44,11 @@ Those features may be added later.
 
 ## How it works
 
-1. Export a campaign description from GameBus as an Excel file (`.xlsx`)
-2. Open the GameBus Campaign Assistant
-3. Upload the Excel file
-4. Run the analysis
-5. Read the issues in the chat interface
-6. Optionally download the Excel error report
+1. Open the GameBus Campaign Assistant.
+2. Enter a campaign abbreviation or upload a campaign description Excel file exported from GameBus.
+3. Run the analysis.
+4. Read the issues in the chat interface.
+5. Optionally download the Excel error report.
 
 ---
 
@@ -55,12 +56,12 @@ Those features may be added later.
 
 - Local web-based interface
 - Upload one GameBus campaign Excel file
+- Download campaign description from GameBus
 - Run the existing campaign checker
-- Includes TTM structure checks
+- TTM structure checks
 - Chat-style explanation of problems
 - Optional Excel export of issues
 - Local storage of app settings
-- Optional helper for downloading campaign files from GameBus
 
 ---
 
@@ -77,7 +78,7 @@ This version is mainly focused on:
 
 # Installation (Windows)
 
-## Option 1 — easiest way
+## Option 1 - easiest way
 
 If you received prepared Windows scripts with this project:
 
@@ -90,7 +91,7 @@ Your browser should open automatically.
 
 ---
 
-## Option 2 — manual installation
+## Option 2 - manual installation
 
 ### 1. Install Python
 
@@ -132,19 +133,19 @@ streamlit run src/campaign_assistant/app.py
 
 # How to use the app
 
-## Step 1 — Start the app
+## Step 1 - Start the app
 
 Launch the app using the provided script or the Streamlit command above.
 
-## Step 2 — Upload a campaign file
+## Step 2 - Upload a campaign file
 
 Upload a GameBus campaign Excel export (`.xlsx`).
 
-## Step 3 — Run checks
+## Step 3 - Run checks
 
 Choose the checks you want to run, or run all checks.
 
-## Step 4 — Review the results
+## Step 4 - Review the results
 
 The assistant will summarize:
 
@@ -153,7 +154,7 @@ The assistant will summarize:
 * TTM issues,
 * and which problems should be fixed first.
 
-## Step 5 — Ask follow-up questions
+## Step 5 - Ask follow-up questions
 
 Examples:
 
@@ -162,9 +163,9 @@ Examples:
 * `Which checks failed?`
 * `What should I fix first?`
 
-## Step 6 — Export report (optional)
+## Step 6 - Export report (optional)
 
-If enabled, you can download the Excel error report.
+You can download the Excel error report.
 
 ---
 
@@ -199,7 +200,7 @@ src/
 
 docs/
 tests/
-samples/
+logs/
 scripts/
 ```
 
@@ -217,13 +218,27 @@ Suggested files include:
 * `docs/ttm-checks.md`
 
 ---
+## Logging
+
+The app writes a session log to the local `logs/` folder in JSONL format.
+
+The log includes:
+- upload or download metadata
+- selected checks
+- user chat messages
+- assistant responses
+- checker summary
+- errors
+
+Please archive the log folder at the end of the testing and send it back together with the filled feedback template `docs/pilot_feedback_template.docx`.
+
+---
 
 # Known limitations
 
 * This tool works with **downloaded campaign Excel files**, not live GameBus editing.
 * Not every GameBus-side issue can necessarily be inferred from the export alone.
 * The TTM checks currently assume the current known TTM structure.
-* Some advanced GameBus features may require future extensions to the checker and UI.
 * This tool is currently designed primarily for **Windows** usage.
 
 ---
@@ -246,7 +261,7 @@ pytest
 
 # Legacy checker
 
-This project wraps an earlier GameBus campaign checker.
+This project wraps an earlier GameBus campaign checker: https://github.com/SergeAutexier/GameBusChecker
 
 The original checking logic is preserved and isolated in the `legacy/` part of the package, while the rest of this project provides:
 

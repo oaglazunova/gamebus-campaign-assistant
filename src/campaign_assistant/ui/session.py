@@ -5,6 +5,7 @@ from typing import Any, Dict
 import streamlit as st
 
 from campaign_assistant.config import load_app_config
+from campaign_assistant.session_logging import SessionLogger
 from campaign_assistant.storage import load_settings
 
 
@@ -20,6 +21,8 @@ def _default_session_state() -> Dict[str, Any]:
         "current_file_path": None,
         "current_campaign_abbreviation": "",
         "last_source_info": None,
+        "logger": SessionLogger(log_dir="logs"),
+        "session_context_logged": False,
     }
 
 

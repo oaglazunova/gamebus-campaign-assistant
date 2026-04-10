@@ -153,7 +153,7 @@ If you want more detail, ask the chat:
 
 # Excel report export
 
-If the **Generate Excel report** option is enabled before analysis, the app will also create a traditional Excel report of issues.
+The app automatically generates an Excel report of issues after every successful analysis. If issues are found, a download button will appear in the sidebar.
 
 This is useful if:
 
