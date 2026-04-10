@@ -2,53 +2,34 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-# ---------------------------------------------------------
-# Constants: keep the same names as the legacy checker uses
-# ---------------------------------------------------------
-CONSISTENCY = "consistency"
-VISUALIZATIONINTERN = "visualizationintern"
-REACHABILITY = "reachability"
-TARGETPOINTSREACHABLE = "targetpointsreachable"
-SECRETS = "secrets"
-SPELLCHECKER = "spellchecker"
-TTMSTRUCTURE = "ttm"
-
-DEFAULT_CHECKS = [
-    REACHABILITY,
+from campaign_assistant.checker.prioritization import issue_priority_score
+from campaign_assistant.checker.schema import (
     CONSISTENCY,
-    VISUALIZATIONINTERN,
-    TARGETPOINTSREACHABLE,
+    DEFAULT_CHECKS,
+    Issue,
+    REACHABILITY,
     SECRETS,
+    SPELLCHECKER,
+    TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
-]
+    VISUALIZATIONINTERN,
+    SEVERITY_BY_CHECK,
+)
 
-SEVERITY_BY_CHECK = {
-    TTMSTRUCTURE: "high",
-    TARGETPOINTSREACHABLE: "high",
-    REACHABILITY: "high",
-    CONSISTENCY: "high",
-    VISUALIZATIONINTERN: "medium",
-    SECRETS: "medium",
-    SPELLCHECKER: "low",
-}
-
-SEVERITY_SCORE = {"high": 300, "medium": 200, "low": 100}
-
-# ---------------------------------------------------------
-# Load the legacy checker dynamically from the same folder
-# ---------------------------------------------------------
 HERE = Path(__file__).resolve().parent
-PROJECT_ROOT = HERE.parent
-LEGACY_FILE = PROJECT_ROOT / "legacy_checker" / "gamebus_campaign_checker.py"
+PACKAGE_ROOT = HERE.parent
+LEGACY_FILE = PACKAGE_ROOT / "legacy" / "gamebus_campaign_checker.py"
 
-spec = importlib.util.spec_from_file_location("legacy_checker", LEGACY_FILE)
+spec = importlib.util.spec_from_file_location(
+    "campaign_assistant_legacy_checker",
+    LEGACY_FILE,
+)
 legacy_checker = importlib.util.module_from_spec(spec)
 assert spec is not None and spec.loader is not None
 spec.loader.exec_module(legacy_checker)
@@ -56,13 +37,10 @@ spec.loader.exec_module(legacy_checker)
 CampaignChecker = legacy_checker.CampaignChecker
 
 
-# ---------------------------------------------------------
-# Runtime patches for a few legacy checker quirks
-# We do this here so the original checker file can stay
-# untouched.
-# ---------------------------------------------------------
 def _patch_legacy_checker() -> None:
-    # Some legacy code calls addErrors instead of addError.
+    """
+    Apply runtime compatibility patches without modifying the legacy file itself.
+    """
     if not hasattr(CampaignChecker, "addErrors"):
         CampaignChecker.addErrors = CampaignChecker.addError
 
@@ -124,40 +102,6 @@ def _patch_legacy_checker() -> None:
 _patch_legacy_checker()
 
 
-# ---------------------------------------------------------
-# Normalized issue model
-# ---------------------------------------------------------
-@dataclass
-class Issue:
-    check: str
-    severity: str
-    active_wave: bool
-    visualization_id: Any
-    visualization: str
-    challenge_id: Any
-    challenge: str
-    wave_id: Any
-    message: str
-    url: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "check": self.check,
-            "severity": self.severity,
-            "active_wave": self.active_wave,
-            "visualization_id": self.visualization_id,
-            "visualization": self.visualization,
-            "challenge_id": self.challenge_id,
-            "challenge": self.challenge,
-            "wave_id": self.wave_id,
-            "message": self.message,
-            "url": self.url,
-        }
-
-
-# ---------------------------------------------------------
-# Small helpers
-# ---------------------------------------------------------
 def _is_nan(value: Any) -> bool:
     try:
         return bool(pd.isna(value))
@@ -194,7 +138,12 @@ def _active_wave_ids(checker: CampaignChecker) -> set:
     return active
 
 
-def _issue_from_legacy(check_name: str, checker: CampaignChecker, issue: Dict[str, Any], active_wave_ids: set) -> Issue:
+def _issue_from_legacy(
+    check_name: str,
+    checker: CampaignChecker,
+    issue: Dict[str, Any],
+    active_wave_ids: set,
+) -> Issue:
     vis = issue["visualization"]
     ch = issue["challenge"]
 
@@ -222,44 +171,50 @@ def _issue_from_legacy(check_name: str, checker: CampaignChecker, issue: Dict[st
     )
 
 
-def _priority_score(issue: Issue) -> int:
-    score = SEVERITY_SCORE[issue.severity]
-    if issue.active_wave:
-        score += 50
-    return score
-
-
 def export_issues_to_excel(issues: List[Issue], output_path: str | Path) -> str:
+    """
+    Export normalized issues to an Excel file, matching the legacy legacy format.
+    """
     output_path = str(output_path)
-    rows = [i.to_dict() for i in issues]
+    # Legacy format columns: 'Kind', 'Visualization', 'Challenge', 'Error', 'URL'
+    rows = []
+    for issue in issues:
+        rows.append({
+            "Kind": issue.check,
+            "Visualization": issue.visualization,
+            "Challenge": issue.challenge,
+            "Error": issue.message,
+            "URL": issue.url,
+        })
     df = pd.DataFrame(rows)
 
     if df.empty:
-        df = pd.DataFrame(columns=[
-            "check",
-            "severity",
-            "active_wave",
-            "visualization_id",
-            "visualization",
-            "challenge_id",
-            "challenge",
-            "wave_id",
-            "message",
-            "url",
-        ])
+        df = pd.DataFrame(
+            columns=["Kind", "Visualization", "Challenge", "Error", "URL"]
+        )
 
     with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Issues", index=False)
-        worksheet = writer.sheets["Issues"]
+        df.to_excel(writer, sheet_name="Errors", index=False)
+        worksheet = writer.sheets["Errors"]
+
+        (max_row, max_col) = df.shape
+        column_settings = [{"header": column} for column in df.columns]
+        # Add the Excel table structure.
+        worksheet.add_table(0, 0, max_row, max_col - 1, {"columns": column_settings})
+
         worksheet.autofit()
 
     return output_path
 
 
-# ---------------------------------------------------------
-# Main function that the Streamlit app will call
-# ---------------------------------------------------------
-def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = None, export_excel: bool = False) -> Dict[str, Any]:
+def run_campaign_checks(
+    file_path: str | Path,
+    checks: Optional[List[str]] = None,
+    export_excel: bool = False,
+) -> Dict[str, Any]:
+    """
+    Run selected checks on a GameBus campaign export and return normalized results.
+    """
     checks = checks or DEFAULT_CHECKS
     checker = CampaignChecker(str(file_path))
     active_wave_ids = _active_wave_ids(checker)
@@ -274,8 +229,8 @@ def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = Non
         SPELLCHECKER: checker.spellcheckTaskAndChallenges,
     }
 
-    check_status = {}
-    notes = []
+    check_status: Dict[str, str] = {}
+    notes: List[str] = []
 
     for check_name in checks:
         fn = method_map[check_name]
@@ -293,7 +248,7 @@ def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = Non
         for raw in raw_issues:
             issues.append(_issue_from_legacy(check_name, checker, raw, active_wave_ids))
 
-    issues.sort(key=_priority_score, reverse=True)
+    issues.sort(key=issue_priority_score, reverse=True)
 
     issues_by_check: Dict[str, List[Dict[str, Any]]] = {c: [] for c in checks}
     for issue in issues:
@@ -316,13 +271,15 @@ def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = Non
     if not waves_df.empty:
         for _, row in waves_df.iterrows():
             wave_id = _clean_scalar(row.get("id"))
-            waves.append({
-                "id": wave_id,
-                "name": _clean_scalar(row.get("name")),
-                "start": _clean_scalar(row.get("start")),
-                "end": _clean_scalar(row.get("end")),
-                "active_now": wave_id in active_wave_ids,
-            })
+            waves.append(
+                {
+                    "id": wave_id,
+                    "name": _clean_scalar(row.get("name")),
+                    "start": _clean_scalar(row.get("start")),
+                    "end": _clean_scalar(row.get("end")),
+                    "active_now": wave_id in active_wave_ids,
+                }
+            )
 
     return {
         "file_name": Path(file_path).name,
@@ -333,7 +290,9 @@ def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = Non
             "passed_checks": passed_checks,
             "failed_checks": failed_checks,
             "errored_checks": errored_checks,
-            "issue_count_by_check": {name: len(issues_by_check.get(name, [])) for name in checks},
+            "issue_count_by_check": {
+                name: len(issues_by_check.get(name, [])) for name in checks
+            },
         },
         "waves": waves,
         "issues_by_check": issues_by_check,
@@ -341,33 +300,3 @@ def run_campaign_checks(file_path: str | Path, checks: Optional[List[str]] = Non
         "notes": notes,
         "excel_report_path": excel_report_path,
     }
-
-
-def summarize_result(result: Dict[str, Any]) -> str:
-    s = result["summary"]
-    total = s["total_issues"]
-    failed = s["failed_checks"]
-    passed = s["passed_checks"]
-    active_waves = [w["name"] for w in result.get("waves", []) if w.get("active_now")]
-
-    lines = [f"I checked **{result['file_name']}**."]
-    lines.append(f"I found **{total} issue(s)**.")
-
-    if failed:
-        lines.append("Failed checks: " + ", ".join(f"`{x}`" for x in failed) + ".")
-    if passed:
-        lines.append("Passed checks: " + ", ".join(f"`{x}`" for x in passed) + ".")
-    if active_waves:
-        lines.append("Active wave(s) right now: " + ", ".join(f"`{x}`" for x in active_waves) + ".")
-
-    return "\n\n".join(lines)
-
-
-def explain_ttm() -> str:
-    return (
-        "The current TTM check assumes this stage structure: "
-        "Newbie → Rookie → Amateur → Proficient → Skilled → Expert → Master → Grandmaster, "
-        "with relapse / 'at risk' levels around Skilled, Expert, and Master. "
-        "In plain language: forward progression should go to the next level on success, "
-        "while failure should either keep the user at the same level or send them to the correct at-risk / previous level, depending on where they are in the structure."
-    )
