@@ -33,7 +33,7 @@ def render_sidebar() -> Dict[str, Any]:
 		st.markdown("### GameBus Campaign Assistant")
 
 		source_options = ["Upload Excel file", "Download from GameBus"]
-		source_mode = settings.get("last_source_mode", "Upload Excel file")		
+		source_mode = settings.get("last_source_mode", "Upload Excel file")
 
 		email_prefill = settings.get("email", "").strip()
 		saved_password = load_password(email_prefill) if email_prefill else None
@@ -125,13 +125,21 @@ def render_sidebar() -> Dict[str, Any]:
 				format_func=lambda name: FRIENDLY_CHECK_NAMES.get(name, name),
 			)
 
+		with st.expander("Display", expanded=False):
+			show_agent_trace = st.checkbox(
+				"Show agent reasoning trace",
+				value=bool(st.session_state.get("show_agent_trace", False)),
+				help="Useful for demos and debugging. Hidden by default for normal users.",
+			)
+			st.session_state.show_agent_trace = show_agent_trace
+
 		run_clicked = st.button("Analyze campaign", type="primary", use_container_width=True)
 
 		result = st.session_state.get("result")
 		excel_path_str = result.get("excel_report_path") if result else None
 		excel_path = Path(excel_path_str) if excel_path_str else None
 		total_issues = result.get("summary", {}).get("total_issues", 0) if result else 0
-		
+
 		if excel_path and excel_path.exists() and total_issues > 0:
 			with open(excel_path, "rb") as f:
 				st.download_button(
@@ -160,4 +168,5 @@ def render_sidebar() -> Dict[str, Any]:
 		"uploaded_file": uploaded_file,
 		"selected_checks": selected_checks,
 		"export_excel": True,
+		"show_agent_trace": st.session_state.get("show_agent_trace", False),
 	}

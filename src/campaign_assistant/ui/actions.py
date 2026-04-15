@@ -6,7 +6,8 @@ from pathlib import Path
 
 import streamlit as st
 
-from campaign_assistant.checker import run_campaign_checks, summarize_result
+from campaign_assistant.checker import summarize_result
+from campaign_assistant.orchestration import CampaignAnalysisCoordinator
 from campaign_assistant.session_logging import SessionLogger
 
 
@@ -27,10 +28,13 @@ def run_analysis(
     selected_checks: list[str],
     export_excel: bool,
     logger: SessionLogger | None = None,
+    workspace_id: str | None = None,
 ) -> None:
     """
-    Run campaign analysis and store the result in Streamlit session state.
-    Also appends a short assistant summary to the chat history.
+    Run campaign analysis through the new multi-agent coordinator and store
+    the result in Streamlit session state.
+
+    This preserves current UI behavior while introducing runtime agent orchestration.
     """
     if logger is not None:
         logger.log_analysis_requested(
@@ -40,14 +44,18 @@ def run_analysis(
         )
 
     try:
-        result = run_campaign_checks(
+        coordinator = CampaignAnalysisCoordinator(logger=logger)
+
+        result = coordinator.analyze_campaign(
             file_path=file_path,
-            checks=selected_checks,
+            selected_checks=selected_checks,
             export_excel=export_excel,
+            workspace_id=workspace_id,
         )
 
         st.session_state.current_file_path = str(file_path)
         st.session_state.result = result
+        st.session_state.agent_trace = result.get("assistant_meta", {}).get("agent_trace", [])
 
         summary = summarize_result(result)
         st.session_state.messages.append(
