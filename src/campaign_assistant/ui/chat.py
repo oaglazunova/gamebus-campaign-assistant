@@ -14,6 +14,11 @@ from campaign_assistant.patches import (
 	PatchedExcelDraftGenerator,
 	TaskRolesDraftGenerator,
 )
+from campaign_assistant.proposals import (
+	build_proposal_groups,
+	annotate_proposal_groups_with_context,
+	matches_group_focus,
+)
 
 
 HARD_MAX_ISSUES_TO_RENDER = 100
@@ -398,7 +403,13 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 	if "what is ttm" in q or "explain ttm" in q or "ttm problem" in q:
 		return explain_ttm()
 
+	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {})
+	active_modules = capability_summary.get("active_modules", {})
+
 	if any(x in q for x in ["point", "gatekeeping", "gatekeeper", "maintenance"]):
+		if active_modules.get("point_gatekeeping_checks") is False:
+			return "Point/gatekeeping reasoning is not active for this campaign."
+
 		pg = result.get("point_gatekeeping", {})
 		if not pg:
 			return "No point/gatekeeping analysis is available for this campaign."
@@ -411,8 +422,6 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 			f"- unreachable targets: **{pg_summary.get('unreachable_targets', 0)}**",
 			f"- gatekeeper warnings: **{pg_summary.get('gatekeeper_warnings', 0)}**",
 			f"- maintenance warnings: **{pg_summary.get('maintenance_warnings', 0)}**",
-			"",
-			_build_point_findings_markdown(result, max_items=5),
 		]
 		return "\n".join(lines)
 
@@ -433,6 +442,14 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 
 	if any(x in q for x in ["task role draft", "role draft", "gatekeeper draft", "task_roles draft"]):
 		return _build_task_roles_draft_markdown(result)
+
+	if any(x in q for x in ["setup", "metadata", "missing metadata", "campaign setup hints"]):
+		hints = result.get("assistant_meta", {}).get("campaign_setup_hints", [])
+		if not hints:
+			return "There are currently no specific campaign setup hints."
+		lines = ["Here are the current recommended campaign setup steps:"]
+		lines.extend([f"- {h}" for h in hints])
+		return "\n".join(lines)
 
 	for check_name, friendly_name in FRIENDLY_CHECK_NAMES.items():
 		if check_name.lower() in q or friendly_name.lower() in q:
@@ -501,12 +518,75 @@ def render_issues_panel(result: Dict[str, Any]) -> None:
 			)
 
 
+def render_capability_panel(result: Dict[str, Any]) -> None:
+	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {})
+	if not capability_summary:
+		return
+
+	st.subheader("Campaign capability summary")
+
+	capabilities = capability_summary.get("capabilities", {})
+	active_modules = capability_summary.get("active_modules", {})
+	sources = capability_summary.get("sources", {})
+	notes = capability_summary.get("notes", [])
+	missing = capability_summary.get("missing", [])
+	task_role_count = capability_summary.get("task_role_count", 0)
+	setup_hints = result.get("assistant_meta", {}).get("campaign_setup_hints", [])
+
+	c1, c2, c3, c4 = st.columns(4)
+	c1.metric("Task-role annotations", task_role_count)
+	c2.metric("Progression", str(capabilities.get("uses_progression")))
+	c3.metric("Gatekeeping", str(capabilities.get("uses_gatekeeping")))
+	c4.metric("TTM", str(capabilities.get("uses_ttm")))
+
+	with st.expander("Resolved capabilities", expanded=False):
+		for key, value in capabilities.items():
+			source = sources.get(key, "unknown")
+			st.markdown(f"- **{key}**: `{value}` _(source: {source})_")
+
+	with st.expander("Active reasoning modules", expanded=False):
+		for key, value in active_modules.items():
+			st.markdown(f"- **{key}**: `{value}`")
+
+	if setup_hints:
+		with st.expander("Recommended campaign setup steps", expanded=False):
+			for hint in setup_hints:
+				st.markdown(f"- {hint}")
+
+	if notes:
+		with st.expander("Metadata notes", expanded=False):
+			for note in notes:
+				st.markdown(f"- {note}")
+
+	if missing:
+		with st.expander("Missing / uncertain metadata", expanded=False):
+			for item in missing:
+				st.markdown(f"- {item}")
+
+
 def render_theory_panel(result: Dict[str, Any]) -> None:
 	theory = result.get("theory_grounding", {})
 	if not theory:
 		return
 
 	st.subheader("Theory grounding")
+
+	applicability = theory.get("applicability", {})
+	status = applicability.get("status")
+	reason = applicability.get("reason", "")
+
+	if status == "not_applicable":
+		st.info(f"Theory grounding is not active for this campaign. {reason}")
+		st.markdown(_build_theory_summary_markdown(result))
+		return
+	elif status == "uncertain":
+		st.warning(f"Theory grounding may be incomplete. {reason}")
+
+	if theory.get("confidence") == "not_applicable":
+		st.info("Theory grounding is not active for this campaign.")
+		st.markdown(_build_theory_summary_markdown(result))
+		return
+
 	st.markdown(_build_theory_summary_markdown(result))
 
 	stage_notes = theory.get("stage_notes") or {}
@@ -522,6 +602,18 @@ def render_point_gatekeeping_panel(result: Dict[str, Any]) -> None:
 		return
 
 	st.subheader("Point & gatekeeping findings")
+
+	applicability = pg.get("applicability", {})
+	status = applicability.get("status")
+	reason = applicability.get("reason", "")
+
+	if status == "not_applicable":
+		st.info(f"Point/gatekeeping reasoning is not active for this campaign. {reason}")
+		return
+	elif status == "uncertain":
+		st.warning(f"Point/gatekeeping results are only partially interpretable. {reason}")
+	elif status == "partial":
+		st.warning(f"Point/gatekeeping reasoning is active but incomplete. {reason}")
 
 	st.info(
 		"**Recommended workflow for point fixing**\n\n"
@@ -547,14 +639,157 @@ def render_point_gatekeeping_panel(result: Dict[str, Any]) -> None:
 		for warning in pg["warnings"]:
 			st.warning(warning)
 
-	if pg.get("findings"):
-		with st.expander("Challenge-level details", expanded=False):
-			st.markdown(_build_point_findings_markdown(result, max_items=12))
-
 	if pg.get("suggestions"):
 		with st.expander("Suggested follow-up actions", expanded=False):
 			for suggestion in pg["suggestions"]:
 				st.markdown(f"- {suggestion}")
+
+
+def _severity_explainer_markdown() -> str:
+	return (
+		"- **High**: likely breaks progression, reachability, active-wave behavior, "
+		"or another core campaign mechanic.\n"
+		"- **Medium**: likely wrong, incomplete, or ambiguous, but not obviously blocking core flow.\n"
+		"- **Low**: informational, annotation-related, or useful follow-up work.\n\n"
+		"Severity is currently heuristic. It is intended to help prioritization, "
+		"not to serve as a formal correctness proof."
+	)
+
+
+def _ensure_current_manifest_from_saved_decisions(result: Dict[str, Any]) -> Dict[str, Any] | None:
+	assistant_meta = result.get("assistant_meta", {}) or {}
+	workspace_root = assistant_meta.get("workspace_root")
+	request_id = assistant_meta.get("request_id")
+
+	if not workspace_root or not request_id:
+		return None
+
+	proposals = result.get("fix_proposals", {}).get("proposals", []) or []
+	handler = ApprovalHandler(workspace_root=workspace_root, request_id=request_id)
+	merged_proposals = handler.merge_statuses(proposals)
+	result["fix_proposals"]["proposals"] = merged_proposals
+
+	manifest_generator = PatchManifestGenerator(
+		workspace_root=workspace_root,
+		request_id=request_id,
+	)
+	manifest = manifest_generator.generate(merged_proposals)
+	result["patch_manifest"] = manifest
+	return manifest
+
+
+
+def _proposal_ids_from_groups(groups: list[Dict[str, Any]]) -> list[str]:
+	ids: list[str] = []
+	for group in groups:
+		ids.extend(group.get("member_proposal_ids", []))
+	return ids
+
+
+def _format_group_detail_markdown(group: Dict[str, Any]) -> str:
+	lines = []
+	lines.append(f"- **Issue family:** {group.get('issue_label')}")
+	lines.append(f"- **Summary:** {group.get('summary')}")
+	lines.append(f"- **Category:** {group.get('category')}")
+	lines.append(f"- **Severity:** {group.get('severity')}")
+	lines.append(f"- **Status:** {group.get('status')}")
+	lines.append(f"- **Priority:** {group.get('priority', 'normal')}")
+	if group.get("priority_reason"):
+		lines.append(f"- **Why now:** {group.get('priority_reason')}")
+	lines.append(f"- **Member proposals:** {group.get('member_count', 0)}")
+
+	context_tags = group.get("context_tags") or []
+	if context_tags:
+		lines.append(f"- **Context tags:** {', '.join(context_tags)}")
+
+	challenge_names = group.get("challenge_names") or []
+	if challenge_names:
+		lines.append("- **Affected challenges:**")
+		for name in challenge_names[:15]:
+			lines.append(f"  - {name}")
+		if len(challenge_names) > 15:
+			lines.append(f"  - … and {len(challenge_names) - 15} more")
+
+	rationales = group.get("rationales") or []
+	if rationales:
+		lines.append("- **Rationales:**")
+		for item in rationales[:5]:
+			lines.append(f"  - {item}")
+
+	notes = group.get("notes") or []
+	if notes:
+		lines.append("- **Notes:**")
+		for item in notes[:5]:
+			lines.append(f"  - {item}")
+
+	member_ids = group.get("member_proposal_ids") or []
+	if member_ids:
+		lines.append("- **Proposal IDs:**")
+		for pid in member_ids[:15]:
+			lines.append(f"  - `{pid}`")
+		if len(member_ids) > 15:
+			lines.append(f"  - … and {len(member_ids) - 15} more")
+
+	return "\n".join(lines)
+
+
+
+def _format_member_detail_markdown(proposal: Dict[str, Any]) -> str:
+	lines = []
+	lines.append(f"- **Proposal ID:** `{proposal.get('proposal_id')}`")
+	lines.append(f"- **Challenge:** {proposal.get('challenge_name') or 'General'}")
+	lines.append(f"- **Category:** {proposal.get('category')}")
+	lines.append(f"- **Action type:** {proposal.get('action_type')}")
+	lines.append(f"- **Severity:** {proposal.get('severity')}")
+	lines.append(f"- **Status:** {proposal.get('status', 'proposed')}")
+
+	rationale = proposal.get("rationale")
+	if rationale:
+		lines.append(f"- **Rationale:** {rationale}")
+
+	suggested_change = proposal.get("suggested_change")
+	if suggested_change:
+		lines.append("- **Suggested change:**")
+		for key, value in suggested_change.items():
+			lines.append(f"  - **{key}**: `{value}`")
+
+	notes = proposal.get("notes")
+	if notes:
+		lines.append(f"- **Notes:** {notes}")
+
+	return "\n".join(lines)
+
+
+def _group_setup_actions(group: Dict[str, Any]) -> list[tuple[str, str]]:
+	tags = set(group.get("context_tags") or [])
+	issue_family = str(group.get("issue_family") or "")
+
+	actions: list[tuple[str, str]] = []
+
+	if "gatekeeping" in tags or "maintenance" in tags or "setup-needed" in tags:
+		actions.append(("Open task-role editor", "task_roles"))
+
+	if "ttm" in tags or issue_family == "ttm_manual_review":
+		actions.append(("Open theory file setup", "theory"))
+
+	if issue_family in {
+		"missing_target_points",
+		"unreachable_target_points",
+		"gatekeeping_not_required_by_points",
+	}:
+		actions.append(("Open capability profile", "profile"))
+
+	# Deduplicate while preserving order
+	seen = set()
+	deduped: list[tuple[str, str]] = []
+	for label, target in actions:
+		key = (label, target)
+		if key in seen:
+			continue
+		seen.add(key)
+		deduped.append((label, target))
+
+	return deduped
 
 
 def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
@@ -564,8 +799,8 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 
 	st.subheader("Fix proposals")
 
-	count = fixer.get("proposal_count", 0)
-	st.markdown(f"Generated **{count}** structured fix proposal(s).")
+	raw_count = fixer.get("proposal_count", 0)
+	st.markdown(f"Generated **{raw_count}** structured fix proposal(s).")
 
 	path = fixer.get("proposals_path")
 	if path:
@@ -588,36 +823,15 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 		proposals = handler.merge_statuses(proposals)
 		result["fix_proposals"]["proposals"] = proposals
 
-	# ---- staged approval state in session ----
-	pending_key = f"proposal-pending-decisions-{request_id}"
-	selected_key = f"proposal-selected-id-{request_id}"
-
-	if pending_key not in st.session_state:
-		st.session_state[pending_key] = {}
-
-	pending_decisions: dict[str, str] = st.session_state[pending_key]
-
-	def _effective_status(proposal: Dict[str, Any]) -> str:
-		pid = proposal.get("proposal_id")
-		if pid in pending_decisions:
-			return pending_decisions[pid]
-		return proposal.get("status", "proposed")
-
-	def _with_effective_status(items: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-		out = []
-		for item in items:
-			item_copy = dict(item)
-			item_copy["status"] = _effective_status(item)
-			item_copy["unsaved"] = item.get("proposal_id") in pending_decisions
-			out.append(item_copy)
-		return out
-
-	proposals = _with_effective_status(proposals)
+	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {}) or {}
+	proposal_groups = build_proposal_groups(proposals)
+	proposal_groups = annotate_proposal_groups_with_context(proposal_groups, capability_summary)
 
 	with st.expander("Proposal review", expanded=False):
-		all_statuses = ["proposed", "accepted", "rejected"]
+		all_statuses = ["proposed", "accepted", "rejected", "mixed"]
 
-		col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
+		col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns([2, 2, 3, 2, 2])
+
 		with col_f1:
 			status_filter = st.multiselect(
 				"Statuses",
@@ -638,25 +852,64 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 				key=f"proposal-search-{request_id}",
 			).strip().lower()
 
-		filtered = []
-		for proposal in proposals:
-			if proposal.get("status", "proposed") not in status_filter:
+		with col_f4:
+			focus_filter = st.selectbox(
+				"Focus",
+				options=[
+					"All",
+					"Recommended now",
+					"Gatekeeping setup",
+					"Maintenance setup",
+					"Point fixes",
+					"TTM review",
+				],
+				key=f"proposal-focus-filter-{request_id}",
+			)
+
+		with col_f5:
+			with st.popover("ℹ️ Severity"):
+				st.markdown(_severity_explainer_markdown())
+
+		filtered_groups = []
+		for group in proposal_groups:
+			if group.get("status", "proposed") not in status_filter:
+				continue
+
+			if not matches_group_focus(group, focus_filter):
 				continue
 
 			if search:
 				haystack = " ".join(
-					str(proposal.get(k, "") or "")
-					for k in ["proposal_id", "challenge_name", "category", "action_type", "severity"]
+					str(group.get(k, "") or "")
+					for k in [
+						"group_id",
+						"summary",
+						"issue_family",
+						"issue_label",
+						"category",
+						"severity",
+						"priority",
+						"priority_reason",
+						"context_tags",
+					]
 				).lower()
 				if search not in haystack:
 					continue
 
-			filtered.append(proposal)
+			filtered_groups.append(group)
 
-		if not filtered:
-			st.info("No proposals match the current filters.")
+		group_count = len(proposal_groups)
+		filtered_raw_count = len(_proposal_ids_from_groups(filtered_groups))
+
+		st.caption(
+			f"Showing grouped review: **{group_count} groups** representing **{raw_count} raw proposals**. "
+			f"Current filter covers **{len(filtered_groups)} groups / {filtered_raw_count} proposals**."
+		)
+
+		if not filtered_groups:
+			st.info("No proposal groups match the current filters.")
 		else:
-			total_pages = max(1, math.ceil(len(filtered) / page_size))
+			total_pages = max(1, math.ceil(len(filtered_groups) / page_size))
 			page_number = st.number_input(
 				"Page",
 				min_value=1,
@@ -668,24 +921,24 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 
 			start = (page_number - 1) * page_size
 			end = start + page_size
-			visible = filtered[start:end]
+			visible_groups = filtered_groups[start:end]
 
 			st.caption(
-				f"Showing proposals {start + 1}–{min(end, len(filtered))} of {len(filtered)} filtered "
-				f"({len(proposals)} total)."
+				f"Showing groups {start + 1}–{min(end, len(filtered_groups))} of {len(filtered_groups)} filtered groups."
 			)
 
 			table_rows = [
 				{
-					"proposal_id": p.get("proposal_id"),
-					"challenge_name": p.get("challenge_name") or "General",
-					"category": p.get("category"),
-					"severity": p.get("severity"),
-					"action_type": p.get("action_type"),
-					"status": p.get("status", "proposed"),
-					"unsaved": p.get("unsaved", False),
+					"group_id": g.get("group_id"),
+					"summary": g.get("summary"),
+					"issue_family": g.get("issue_label"),
+					"category": g.get("category"),
+					"severity": g.get("severity"),
+					"priority": g.get("priority", "normal"),
+					"member_count": g.get("member_count", 0),
+					"status": g.get("status", "proposed"),
 				}
-				for p in visible
+				for g in visible_groups
 			]
 
 			df = pd.DataFrame(table_rows)
@@ -696,150 +949,248 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 				hide_index=True,
 				on_select="rerun",
 				selection_mode="single-row",
-				key=f"proposal-table-{request_id}-{page_number}",
+				key=f"proposal-group-table-{request_id}",
 			)
 
 			selected_rows = []
 			if selection and "selection" in selection and "rows" in selection["selection"]:
 				selected_rows = selection["selection"]["rows"]
 
+			selected_group = None
 			if selected_rows:
 				selected_idx = selected_rows[0]
-				if 0 <= selected_idx < len(visible):
-					st.session_state[selected_key] = visible[selected_idx].get("proposal_id")
+				if 0 <= selected_idx < len(visible_groups):
+					selected_group = visible_groups[selected_idx]
 
-			selected_id = st.session_state.get(selected_key)
-			selected_proposal = next(
-				(p for p in visible if p.get("proposal_id") == selected_id),
-				None,
-			)
-
-			col_a, col_b, col_c, col_d, col_e = st.columns([2, 2, 2, 2, 4])
+			col_a, col_b, col_c, col_d = st.columns([2, 2, 2, 4])
 
 			with col_a:
-				if st.button("Save staged changes", key=f"save-staged-{request_id}-{page_number}"):
+				if st.button("Approve visible groups", key=f"approve-visible-groups-{request_id}-{page_number}"):
 					if handler is not None:
-						if pending_decisions:
-							handler.save_decisions_bulk(
-								[
-									{
-										"proposal_id": proposal_id,
-										"status": status,
-										"reviewer": "human",
-									}
-									for proposal_id, status in pending_decisions.items()
-								]
-							)
-							st.session_state[pending_key] = {}
-							st.success("Staged changes saved.")
-						else:
-							st.info("No staged changes to save.")
+						ids = _proposal_ids_from_groups(visible_groups)
+						handler.save_decisions_bulk(
+							[
+								{
+									"proposal_id": pid,
+									"status": "accepted",
+									"reviewer": "human",
+								}
+								for pid in ids
+							]
+						)
+						st.success(f"Approved {len(visible_groups)} group(s) / {len(ids)} proposal(s).")
 						st.rerun()
 
 			with col_b:
-				if st.button("Discard staged changes", key=f"discard-staged-{request_id}-{page_number}"):
-					st.session_state[pending_key] = {}
-					st.success("Staged changes discarded.")
-					st.rerun()
+				if st.button("Approve filtered groups", key=f"approve-filtered-groups-{request_id}-{page_number}"):
+					if handler is not None:
+						ids = _proposal_ids_from_groups(filtered_groups)
+						handler.save_decisions_bulk(
+							[
+								{
+									"proposal_id": pid,
+									"status": "accepted",
+									"reviewer": "human",
+								}
+								for pid in ids
+							]
+						)
+						st.success(f"Approved {len(filtered_groups)} filtered group(s) / {len(ids)} proposal(s).")
+						st.rerun()
 
 			with col_c:
-				if st.button("Approve visible", key=f"approve-visible-{request_id}-{page_number}"):
-					for p in visible:
-						pending_decisions[p["proposal_id"]] = "accepted"
-					st.session_state[pending_key] = pending_decisions
-					st.rerun()
+				if st.button("Approve everything (testing)", key=f"approve-all-{request_id}"):
+					if handler is not None:
+						handler.save_decisions_bulk(
+							[
+								{
+									"proposal_id": p["proposal_id"],
+									"status": "accepted",
+									"reviewer": "human",
+								}
+								for p in proposals
+							]
+						)
+						st.success(f"Approved all {len(proposals)} proposal(s).")
+						st.rerun()
 
 			with col_d:
-				if st.button("Approve filtered", key=f"approve-filtered-{request_id}-{page_number}"):
-					for p in filtered:
-						pending_decisions[p["proposal_id"]] = "accepted"
-					st.session_state[pending_key] = pending_decisions
-					st.rerun()
+				st.caption(
+					"Select one grouped row below to inspect and approve/reject/reset the whole group at once."
+				)
 
-			with col_e:
-				if st.button("Approve everything (testing)", key=f"approve-all-{request_id}"):
-					for p in proposals:
-						pending_decisions[p["proposal_id"]] = "accepted"
-					st.session_state[pending_key] = pending_decisions
-					st.rerun()
+			if selected_group is not None:
+				st.markdown("### Selected proposal group")
+				st.markdown(_format_group_detail_markdown(selected_group))
 
-			st.caption(
-				"Select a row below, then use the detailed approve/reject/reset controls. "
-				"Changes are staged first and written only when you click “Save staged changes”."
-			)
+				setup_actions = _group_setup_actions(selected_group)
+				if setup_actions:
+					st.markdown("#### Quick actions")
+					action_cols = st.columns(len(setup_actions))
+					for idx, (label, target) in enumerate(setup_actions):
+						with action_cols[idx]:
+							if st.button(
+									label,
+									key=f"group-setup-action-{request_id}-{selected_group['group_id']}-{target}",
+							):
+								st.session_state[f"campaign-setup-focus-{request_id}"] = target
+								st.rerun()
 
-			if selected_proposal is not None:
-				st.markdown("### Selected proposal")
-				st.markdown(_format_fix_proposal(selected_proposal))
-
-				selected_pid = selected_proposal.get("proposal_id")
-				current_status = selected_proposal.get("status", "proposed")
+				member_ids = selected_group.get("member_proposal_ids", [])
+				current_status = selected_group.get("status", "proposed")
+				members = selected_group.get("members", [])
 
 				col1, col2, col3, col4 = st.columns([1, 1, 1, 4])
 
 				with col1:
 					if st.button(
-						"Approve",
-						key=f"approve-selected-{request_id}-{selected_pid}",
+							"Approve group",
+							key=f"approve-selected-group-{request_id}-{selected_group['group_id']}",
 					):
-						pending_decisions[selected_pid] = "accepted"
-						st.session_state[pending_key] = pending_decisions
-						st.rerun()
+						if handler is not None:
+							handler.save_decisions_bulk(
+								[
+									{
+										"proposal_id": pid,
+										"status": "accepted",
+										"reviewer": "human",
+									}
+									for pid in member_ids
+								]
+							)
+							st.rerun()
 
 				with col2:
 					if st.button(
-						"Reject",
-						key=f"reject-selected-{request_id}-{selected_pid}",
+							"Reject group",
+							key=f"reject-selected-group-{request_id}-{selected_group['group_id']}",
 					):
-						pending_decisions[selected_pid] = "rejected"
-						st.session_state[pending_key] = pending_decisions
-						st.rerun()
+						if handler is not None:
+							handler.save_decisions_bulk(
+								[
+									{
+										"proposal_id": pid,
+										"status": "rejected",
+										"reviewer": "human",
+									}
+									for pid in member_ids
+								]
+							)
+							st.rerun()
 
 				with col3:
 					if st.button(
-						"Reset",
-						key=f"reset-selected-{request_id}-{selected_pid}",
+							"Reset group",
+							key=f"reset-selected-group-{request_id}-{selected_group['group_id']}",
 					):
-						pending_decisions[selected_pid] = "proposed"
-						st.session_state[pending_key] = pending_decisions
-						st.rerun()
+						if handler is not None:
+							handler.save_decisions_bulk(
+								[
+									{
+										"proposal_id": pid,
+										"status": "proposed",
+										"reviewer": "human",
+									}
+									for pid in member_ids
+								]
+							)
+							st.rerun()
 
 				with col4:
-					st.caption(f"Current effective status: **{current_status}**")
+					st.caption(f"Current group status: **{current_status}**")
 
-	# ---------- Manifest / draft / role-draft generation ----------
-	if workspace_root and request_id:
-		manifest_generator = PatchManifestGenerator(workspace_root=workspace_root, request_id=request_id)
+				if members:
+					st.markdown("#### Member proposals")
 
-		col_a, col_b = st.columns([2, 5])
+					member_rows = [
+						{
+							"proposal_id": m.get("proposal_id"),
+							"challenge_name": m.get("challenge_name") or "General",
+							"category": m.get("category"),
+							"action_type": m.get("action_type"),
+							"severity": m.get("severity"),
+							"status": m.get("status", "proposed"),
+						}
+						for m in members
+					]
 
-		with col_a:
-			if st.button(
-				"Generate patch manifest",
-				key=f"generate-patch-manifest-{request_id}",
-			):
-				merged_proposals = handler.merge_statuses(result["fix_proposals"]["proposals"]) if handler else result["fix_proposals"]["proposals"]
-				manifest = manifest_generator.generate(merged_proposals)
-				result["patch_manifest"] = manifest
-				st.success("Patch manifest generated.")
-				st.rerun()
+					member_df = pd.DataFrame(member_rows)
 
-		with col_b:
-			st.caption(
-				"Generates a structured manifest from currently accepted proposals. "
-				"This does not patch Excel or update GameBus yet."
-			)
+					member_selection = st.dataframe(
+						member_df,
+						use_container_width=True,
+						hide_index=True,
+						on_select="rerun",
+						selection_mode="single-row",
+						key=f"group-member-table-{request_id}-{selected_group['group_id']}",
+					)
 
-		if manifest_generator.manifest_path.exists():
-			st.caption(f"Latest manifest path: {manifest_generator.manifest_path}")
+					selected_member_rows = []
+					if (
+							member_selection
+							and "selection" in member_selection
+							and "rows" in member_selection["selection"]
+					):
+						selected_member_rows = member_selection["selection"]["rows"]
 
-			if "patch_manifest" not in result:
-				import json
-				result["patch_manifest"] = json.loads(manifest_generator.manifest_path.read_text(encoding="utf-8"))
+					selected_member = None
+					if selected_member_rows:
+						selected_idx = selected_member_rows[0]
+						if 0 <= selected_idx < len(members):
+							selected_member = members[selected_idx]
 
-			with st.expander("Patch manifest preview", expanded=False):
-				st.markdown(_build_patch_manifest_markdown(result))
+					if selected_member is not None:
+						st.markdown("#### Selected member proposal")
+						st.markdown(_format_member_detail_markdown(selected_member))
 
+						member_pid = selected_member.get("proposal_id")
+						member_status = selected_member.get("status", "proposed")
+
+						colm1, colm2, colm3, colm4 = st.columns([1, 1, 1, 4])
+
+						with colm1:
+							if st.button(
+									"Approve member",
+									key=f"approve-member-{request_id}-{member_pid}",
+							):
+								if handler is not None:
+									handler.save_decision(
+										proposal_id=member_pid,
+										status="accepted",
+										reviewer="human",
+									)
+									st.rerun()
+
+						with colm2:
+							if st.button(
+									"Reject member",
+									key=f"reject-member-{request_id}-{member_pid}",
+							):
+								if handler is not None:
+									handler.save_decision(
+										proposal_id=member_pid,
+										status="rejected",
+										reviewer="human",
+									)
+									st.rerun()
+
+						with colm3:
+							if st.button(
+									"Reset member",
+									key=f"reset-member-{request_id}-{member_pid}",
+							):
+								if handler is not None:
+									handler.save_decision(
+										proposal_id=member_pid,
+										status="proposed",
+										reviewer="human",
+									)
+									st.rerun()
+
+						with colm4:
+							st.caption(f"Current member status: **{member_status}**")
+
+	# ---------- Draft generation / execution ----------
 	if workspace_root and request_id and snapshot_path:
 		draft_generator = PatchedExcelDraftGenerator(workspace_root=workspace_root, request_id=request_id)
 
@@ -850,12 +1201,13 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 				"Generate patched Excel draft",
 				key=f"generate-patched-draft-{request_id}",
 			):
-				if "patch_manifest" not in result:
-					st.warning("Generate a patch manifest first.")
+				manifest = _ensure_current_manifest_from_saved_decisions(result)
+				if manifest is None:
+					st.warning("Could not build an internal patch manifest for this workspace.")
 				else:
 					draft_summary = draft_generator.generate(
 						snapshot_path=snapshot_path,
-						manifest=result["patch_manifest"],
+						manifest=manifest,
 					)
 					result["patched_excel_draft"] = draft_summary
 					st.success("Patched Excel draft generated.")
@@ -863,7 +1215,7 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 
 		with col_d:
 			st.caption(
-				"Applies supported operations from the patch manifest to a copy of the campaign export. "
+				"Applies currently accepted proposals to a copy of the campaign export. "
 				"Unsupported operations remain listed in the notes sheet."
 			)
 
@@ -891,7 +1243,7 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 			with st.expander("Patched draft preview", expanded=False):
 				st.markdown(_build_patched_draft_markdown(result))
 
-	if workspace_root and request_id and "patch_manifest" in result:
+	if workspace_root and request_id:
 		role_generator = TaskRolesDraftGenerator(workspace_root=workspace_root, request_id=request_id)
 
 		col_e, col_f = st.columns([2, 5])
@@ -901,14 +1253,18 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
 				"Generate task-role sidecar draft",
 				key=f"generate-role-draft-{request_id}",
 			):
-				role_summary = role_generator.generate(result["patch_manifest"])
-				result["task_roles_draft"] = role_summary
-				st.success("Task-role sidecar draft generated.")
-				st.rerun()
+				manifest = _ensure_current_manifest_from_saved_decisions(result)
+				if manifest is None:
+					st.warning("Could not build an internal patch manifest for this workspace.")
+				else:
+					role_summary = role_generator.generate(manifest)
+					result["task_roles_draft"] = role_summary
+					st.success("Task-role sidecar draft generated.")
+					st.rerun()
 
 		with col_f:
 			st.caption(
-				"Builds a draft `task_roles.csv` sidecar from accepted role-annotation proposals. "
+				"Builds a draft `task_roles.csv` sidecar from currently accepted role-annotation proposals. "
 				"This is useful until GameBus supports native task-role metadata."
 			)
 

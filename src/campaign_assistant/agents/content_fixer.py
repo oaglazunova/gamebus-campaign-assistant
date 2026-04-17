@@ -5,29 +5,99 @@ from pathlib import Path
 from typing import Any
 
 from campaign_assistant.agents.base import BaseAgent
+from campaign_assistant.agents.capability_utils import capability_is_true, module_is_enabled
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
 
 
 class ContentFixerAgent(BaseAgent):
     """
-    First version of the content/fixer agent.
+    Deterministic repair proposal generator.
 
     Current scope:
-    - generate deterministic repair proposals from existing findings
-    - suggest point/gatekeeping fixes
-    - suggest annotation fixes
-    - suggest manual follow-up where a precise patch is not yet safe
+    - generate structured repair proposals from existing findings
+    - capability-aware: only propose progression/TTM-related fixes when relevant
 
     Not yet implemented:
     - LLM rewriting
-    - patched Excel generation
-    - direct GameBus write-back
-    - approval workflow
-
-    This agent operates in proposal mode only.
+    - patched Excel generation directly here
+    - GameBus write-back
     """
 
     name = "content_fixer_agent"
+
+
+    def _resolve_uses_ttm(self, context: AgentContext, theory_grounding: dict[str, Any]) -> bool:
+        capability_summary = context.shared.get("capability_summary", {}) or {}
+        capabilities = capability_summary.get("capabilities", {}) or {}
+
+        if capabilities.get("uses_ttm") is not None:
+            return capabilities.get("uses_ttm") is True
+
+        if theory_grounding.get("uses_ttm") is not None:
+            return theory_grounding.get("uses_ttm") is True
+
+        intervention_model = (context.analysis_profile or {}).get("intervention_model", {}) or {}
+        if intervention_model.get("uses_ttm") is not None:
+            return intervention_model.get("uses_ttm") is True
+
+        return "ttm" in (context.selected_checks or [])
+
+
+    def _resolve_ttm_enabled(self, context: AgentContext, uses_ttm: bool) -> bool:
+        capability_summary = context.shared.get("capability_summary", {}) or {}
+        active_modules = capability_summary.get("active_modules", {}) or {}
+
+        if "ttm_checks" in active_modules:
+            return bool(active_modules["ttm_checks"])
+
+        return uses_ttm
+
+
+    def _resolved_task_roles(self, context: AgentContext) -> list[dict[str, Any]]:
+        metadata_bundle = context.shared.get("metadata_bundle")
+        if metadata_bundle is not None and getattr(metadata_bundle, "task_roles", None):
+            items = metadata_bundle.task_roles
+        else:
+            items = context.task_roles or []
+
+        rows: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, dict):
+                rows.append(item)
+            else:
+                rows.append(
+                    {
+                        "task_id": getattr(item, "task_id", "") or "",
+                        "task_name": getattr(item, "task_name", "") or "",
+                        "role": getattr(item, "role", "") or "",
+                        "notes": getattr(item, "notes", "") or "",
+                    }
+                )
+        return rows
+
+    def _has_any_task_role_annotations(self, context: AgentContext) -> bool:
+        return len(self._resolved_task_roles(context)) > 0
+
+    def _is_gatekeeping_setup_complete(self, context: AgentContext) -> bool:
+        capability_summary = context.shared.get("capability_summary", {}) or {}
+        capabilities = capability_summary.get("capabilities", {}) or {}
+
+        if capabilities.get("uses_progression") is False:
+            return False
+
+        # If explicit task-role metadata exists, we consider setup complete enough
+        # to begin stronger gatekeeping-point reasoning.
+        if self._has_any_task_role_annotations(context):
+            return True
+
+        # If the campaign explicitly says it uses gatekeeping but no annotations exist yet,
+        # setup is still incomplete for strong proposal generation.
+        if capabilities.get("uses_gatekeeping") is True:
+            return False
+
+        # Unknown or missing gatekeeping semantics -> incomplete.
+        return False
+
 
     def _role_annotation_note(self, context: AgentContext, role_kind: str, challenge_name: str | None = None) -> str:
         profile = context.analysis_profile or {}
@@ -42,7 +112,6 @@ class ContentFixerAgent(BaseAgent):
                 "depending on your current workflow."
             )
         else:
-            # default
             base = (
                 f"Mark the correct {role_kind} task explicitly in task_roles.csv. "
                 "Once GameBus supports native role metadata, you can migrate it there."
@@ -70,144 +139,165 @@ class ContentFixerAgent(BaseAgent):
                 payload=payload,
             )
 
+        progression_enabled = module_is_enabled(context, "point_gatekeeping_checks", default=True)
+
         structural_result = context.shared.get("result", {})
         point_gatekeeping = structural_result.get("point_gatekeeping", {})
         theory_grounding = context.shared.get("theory_grounding", {})
 
+        uses_ttm = self._resolve_uses_ttm(context, theory_grounding)
+        ttm_enabled = self._resolve_ttm_enabled(context, uses_ttm)
+
+        gatekeeping_setup_complete = self._is_gatekeeping_setup_complete(context)
+
         proposals: list[dict[str, Any]] = []
+        notes: list[str] = []
 
-        # ---- Point/gatekeeping-driven proposals ----
-        for idx, finding in enumerate(point_gatekeeping.get("findings", []), start=1):
-            challenge_name = finding.get("challenge_name") or "Unknown challenge"
-            target_points = finding.get("target_points")
-            theoretical_max = finding.get("theoretical_max_points")
-            explicit_gatekeepers = finding.get("explicit_gatekeepers") or []
-            inferred_gatekeepers = finding.get("inferred_gatekeepers") or []
+        if progression_enabled and not gatekeeping_setup_complete:
+            notes.append(
+                "Gatekeeping/task-role setup is incomplete, so some stronger gatekeeping-point proposals are deferred "
+                "until explicit annotations are added."
+            )
 
-            warnings = finding.get("warnings") or []
+        # ---- Point/gatekeeping-driven proposals only if progression logic is relevant ----
+        if progression_enabled:
+            for idx, finding in enumerate(point_gatekeeping.get("findings", []), start=1):
+                challenge_name = finding.get("challenge_name") or "Unknown challenge"
+                target_points = finding.get("target_points")
+                theoretical_max = finding.get("theoretical_max_points")
+                explicit_gatekeepers = finding.get("explicit_gatekeepers") or []
+                inferred_gatekeepers = finding.get("inferred_gatekeepers") or []
 
-            # Proposal 1: missing target
-            if any("no target points defined" in w.lower() for w in warnings):
-                proposals.append(
-                    {
-                        "proposal_id": f"fix-{idx}-missing-target",
-                        "category": "points",
-                        "challenge_name": challenge_name,
-                        "severity": "high",
-                        "action_type": "set_target_points",
-                        "status": "proposed",
-                        "rationale": (
-                            "The challenge has no target points defined, so progression logic is incomplete."
-                        ),
-                        "suggested_change": {
-                            "target_points": theoretical_max if theoretical_max not in (None, 0) else None,
-                        },
-                        "notes": (
-                            "Review the suggested target before applying. "
-                            "The current proposal uses the theoretical maximum as a safe placeholder."
-                        ),
-                    }
-                )
+                warnings = finding.get("warnings") or []
 
-            # Proposal 2: unreachable target
-            if any("exceed the theoretical maximum" in w.lower() for w in warnings):
-                proposals.append(
-                    {
-                        "proposal_id": f"fix-{idx}-unreachable-target",
-                        "category": "points",
-                        "challenge_name": challenge_name,
-                        "severity": "high",
-                        "action_type": "lower_target_points",
-                        "status": "proposed",
-                        "rationale": (
-                            "The current target exceeds the theoretical maximum reachable points."
-                        ),
-                        "suggested_change": {
-                            "current_target_points": target_points,
-                            "suggested_target_points": theoretical_max,
-                        },
-                        "notes": (
-                            "This is a conservative fix suggestion. "
-                            "An alternative is to increase achievable points or repetitions."
-                        ),
-                    }
-                )
+                if any("no target points defined" in w.lower() for w in warnings):
+                    proposals.append(
+                        {
+                            "proposal_id": f"fix-{idx}-missing-target",
+                            "category": "points",
+                            "challenge_name": challenge_name,
+                            "severity": "high",
+                            "action_type": "set_target_points",
+                            "status": "proposed",
+                            "rationale": (
+                                "The challenge has no target points defined, so progression logic is incomplete."
+                            ),
+                            "suggested_change": {
+                                "target_points": theoretical_max if theoretical_max not in (None, 0) else None,
+                            },
+                            "notes": (
+                                "Review the suggested target before applying. "
+                                "The current proposal uses the theoretical maximum as a safe placeholder."
+                            ),
+                        }
+                    )
 
-            # Proposal 3: explicit gatekeeping annotation
-            if any("no explicit gatekeeping task is marked" in w.lower() for w in warnings):
-                proposals.append(
-                    {
-                        "proposal_id": f"fix-{idx}-gatekeeper-annotation",
-                        "category": "gatekeeping",
-                        "challenge_name": challenge_name,
-                        "severity": "medium",
-                        "action_type": "annotate_gatekeeper",
-                        "status": "proposed",
-                        "rationale": (
-                            "Gatekeeping is expected for progression, but no explicit gatekeeper is marked."
-                        ),
-                        "suggested_change": {
-                            "candidate_gatekeepers": inferred_gatekeepers,
-                        },
-                        "notes": self._role_annotation_note(
-                            context,
-                            role_kind="gatekeeping",
-                            challenge_name=challenge_name,
-                        ),
-                    }
-                )
+                if any("exceed the theoretical maximum" in w.lower() for w in warnings):
+                    proposals.append(
+                        {
+                            "proposal_id": f"fix-{idx}-unreachable-target",
+                            "category": "points",
+                            "challenge_name": challenge_name,
+                            "severity": "high",
+                            "action_type": "lower_target_points",
+                            "status": "proposed",
+                            "rationale": (
+                                "The current target exceeds the theoretical maximum reachable points."
+                            ),
+                            "suggested_change": {
+                                "current_target_points": target_points,
+                                "suggested_target_points": theoretical_max,
+                            },
+                            "notes": (
+                                "This is a conservative fix suggestion. "
+                                "An alternative is to increase achievable points or repetitions."
+                            ),
+                        }
+                    )
 
-            # Proposal 4: progression reachable without gatekeeper
-            if any("reachable even without completing the effective gatekeeping task" in w.lower() for w in warnings):
-                suggested_target = self._target_to_require_gatekeeper(finding)
-                proposals.append(
-                    {
-                        "proposal_id": f"fix-{idx}-strengthen-gatekeeping",
-                        "category": "gatekeeping",
-                        "challenge_name": challenge_name,
-                        "severity": "high",
-                        "action_type": "strengthen_gatekeeping",
-                        "status": "proposed",
-                        "rationale": (
-                            "The current point structure suggests progression may be possible without the effective gatekeeper."
-                        ),
-                        "suggested_change": {
-                            "preferred_candidate_gatekeepers": explicit_gatekeepers or inferred_gatekeepers,
-                            "suggested_target_points": suggested_target,
-                        },
-                        "notes": (
-                            "Possible remedies include increasing the target, "
-                            "increasing gatekeeper weight, or reducing non-gatekeeper contribution."
-                        ),
-                    }
-                )
+                if any("no explicit gatekeeping task is marked" in w.lower() for w in warnings):
+                    proposals.append(
+                        {
+                            "proposal_id": f"fix-{idx}-gatekeeper-annotation",
+                            "category": "gatekeeping",
+                            "challenge_name": challenge_name,
+                            "severity": "medium",
+                            "action_type": "annotate_gatekeeper",
+                            "status": "proposed",
+                            "rationale": (
+                                "Gatekeeping is expected for progression, but no explicit gatekeeper is marked."
+                            ),
+                            "suggested_change": {
+                                "candidate_gatekeepers": inferred_gatekeepers,
+                            },
+                            "notes": self._role_annotation_note(
+                                context,
+                                role_kind="gatekeeping",
+                                challenge_name=challenge_name,
+                            ),
+                        }
+                    )
 
-            # Proposal 5: maintenance annotations for at-risk levels
-            if any("no explicit maintenance tasks are annotated" in w.lower() for w in warnings):
-                proposals.append(
-                    {
-                        "proposal_id": f"fix-{idx}-maintenance-annotation",
-                        "category": "maintenance",
-                        "challenge_name": challenge_name,
-                        "severity": "medium",
-                        "action_type": "annotate_maintenance_tasks",
-                        "status": "proposed",
-                        "rationale": (
-                            "At-risk or relapse-related logic is hard to validate without explicit maintenance-task annotations."
-                        ),
-                        "suggested_change": {
-                            "annotation_required": True,
-                        },
-                        "notes": self._role_annotation_note(
-                            context,
-                            role_kind="maintenance",
-                            challenge_name=challenge_name,
-                        ),
-                    }
-                )
+                if any("reachable even without completing the effective gatekeeping task" in w.lower() for w in
+                       warnings):
+                    if gatekeeping_setup_complete:
+                        suggested_target = self._target_to_require_gatekeeper(finding)
+                        proposals.append(
+                            {
+                                "proposal_id": f"fix-{idx}-strengthen-gatekeeping",
+                                "category": "gatekeeping",
+                                "challenge_name": challenge_name,
+                                "severity": "high",
+                                "action_type": "strengthen_gatekeeping",
+                                "status": "proposed",
+                                "rationale": (
+                                    "The current point structure suggests progression may be possible without the effective gatekeeper."
+                                ),
+                                "suggested_change": {
+                                    "preferred_candidate_gatekeepers": explicit_gatekeepers or inferred_gatekeepers,
+                                    "suggested_target_points": suggested_target,
+                                },
+                                "notes": (
+                                    "Possible remedies include increasing the target, "
+                                    "increasing gatekeeper weight, or reducing non-gatekeeper contribution."
+                                ),
+                            }
+                        )
+                    else:
+                        notes.append(
+                            f"Deferred stronger gatekeeping-point proposals for '{challenge_name}' "
+                            "until explicit gatekeeping/task-role metadata is available."
+                        )
 
-        # ---- Theory-driven manual follow-up proposals ----
-        if theory_grounding.get("uses_ttm") and "ttm" in theory_grounding.get("failed_checks_seen", []):
+                if any("no explicit maintenance tasks are annotated" in w.lower() for w in warnings):
+                    proposals.append(
+                        {
+                            "proposal_id": f"fix-{idx}-maintenance-annotation",
+                            "category": "maintenance",
+                            "challenge_name": challenge_name,
+                            "severity": "medium",
+                            "action_type": "annotate_maintenance_tasks",
+                            "status": "proposed",
+                            "rationale": (
+                                "At-risk or relapse-related logic is hard to validate without explicit maintenance-task annotations."
+                            ),
+                            "suggested_change": {
+                                "annotation_required": True,
+                            },
+                            "notes": self._role_annotation_note(
+                                context,
+                                role_kind="maintenance",
+                                challenge_name=challenge_name,
+                            ),
+                        }
+                    )
+        else:
+            notes.append(
+                "Progression/point-gatekeeping fix proposals were skipped because this campaign does not appear to use progression logic."
+            )
+
+        # ---- Theory-driven follow-up proposals only if TTM is relevant ----
+        if uses_ttm and ttm_enabled and theory_grounding.get("uses_ttm") and "ttm" in theory_grounding.get("failed_checks_seen", []):
             proposals.append(
                 {
                     "proposal_id": "fix-ttm-structure-review",
@@ -228,8 +318,9 @@ class ContentFixerAgent(BaseAgent):
                     ),
                 }
             )
+        elif not uses_ttm or not ttm_enabled:
+            notes.append("TTM-specific fix proposals were skipped because TTM is not enabled for this campaign.")
 
-        # Persist proposals for auditability if we have a workspace.
         proposals_path = self._persist_proposals(context, proposals)
 
         payload = {
@@ -237,6 +328,7 @@ class ContentFixerAgent(BaseAgent):
             "proposal_count": len(proposals),
             "proposals": proposals,
             "proposals_path": str(proposals_path) if proposals_path else None,
+            "notes": notes,
         }
 
         context.shared["fix_proposals"] = payload
@@ -254,11 +346,6 @@ class ContentFixerAgent(BaseAgent):
         )
 
     def _target_to_require_gatekeeper(self, finding: dict[str, Any]) -> float | None:
-        """
-        Conservative target suggestion:
-        if the target is reachable without the gatekeeper, recommend moving the target
-        upward toward the theoretical maximum.
-        """
         target = finding.get("target_points")
         theoretical_max = finding.get("theoretical_max_points")
 
@@ -274,8 +361,6 @@ class ContentFixerAgent(BaseAgent):
         if theoretical_max <= 0:
             return None
 
-        # Conservative: if we know nothing else, recommend the theoretical max.
-        # This is easy to explain and safe as a placeholder suggestion.
         return theoretical_max
 
     def _persist_proposals(self, context: AgentContext, proposals: list[dict[str, Any]]) -> Path | None:

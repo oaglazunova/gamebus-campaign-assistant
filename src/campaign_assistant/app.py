@@ -10,11 +10,13 @@ from campaign_assistant.ui.actions import run_analysis, save_uploaded_file
 from campaign_assistant.ui.chat import (
 	answer_question,
 	render_agent_trace_panel,
+	render_capability_panel,
 	render_fix_proposals_panel,
 	render_issues_panel,
 	render_point_gatekeeping_panel,
 	render_theory_panel,
 )
+from campaign_assistant.ui.setup import render_campaign_setup_panel
 from campaign_assistant.ui.session import init_state
 from campaign_assistant.ui.sidebar import render_sidebar
 from campaign_assistant.file_utils import sha256_file
@@ -169,6 +171,35 @@ def _handle_run(sidebar: dict, logger) -> None:
 		)
 		st.exception(exc)
 
+def _handle_current_snapshot_rerun(sidebar: dict, logger) -> None:
+	payload = st.session_state.pop("rerun_current_snapshot_payload", None)
+	if not payload:
+		return
+
+	file_path = Path(payload["path"])
+	workspace_id = payload.get("workspace_id")
+
+	if not file_path.exists():
+		st.error(f"Snapshot file no longer exists: {file_path}")
+		return
+
+	logger.log(
+		"rerun_current_snapshot_with_workspace_metadata",
+		{
+			"file_path": str(file_path),
+			"workspace_id": workspace_id,
+			"selected_checks": sidebar["selected_checks"],
+		},
+	)
+
+	run_analysis(
+		file_path=file_path,
+		selected_checks=sidebar["selected_checks"],
+		export_excel=sidebar["export_excel"],
+		logger=logger,
+		workspace_id=workspace_id,
+	)
+
 
 def _handle_generated_draft_reload(sidebar: dict, logger) -> None:
 	payload = st.session_state.pop("reload_generated_draft_payload", None)
@@ -232,6 +263,8 @@ def _render_editor_only() -> None:
 		st.info("Analyze a campaign to open the editor view.")
 		return
 
+	render_campaign_setup_panel(result)
+	render_capability_panel(result)
 	render_theory_panel(result)
 	render_point_gatekeeping_panel(result)
 	render_fix_proposals_panel(result)
@@ -249,6 +282,7 @@ def main() -> None:
 	sidebar = render_sidebar()
 	_handle_run(sidebar, logger)
 	_handle_generated_draft_reload(sidebar, logger)
+	_handle_current_snapshot_rerun(sidebar, logger)
 
 	_render_source_info()
 
