@@ -5,7 +5,7 @@ from pathlib import Path
 from campaign_assistant.metadata.adapters.gamebus import load_gamebus_metadata
 from campaign_assistant.metadata.adapters.inferred import load_inferred_metadata
 from campaign_assistant.metadata.adapters.sidecar import load_sidecar_metadata
-from campaign_assistant.metadata.models import MetadataBundle, TaskRoleAnnotation
+from campaign_assistant.metadata.models import MetadataBundle, TaskRoleAnnotation, TheorySource
 from campaign_assistant.metadata.validators import validate_capabilities, validate_task_roles
 
 
@@ -17,8 +17,6 @@ def _merge_capabilities(
     capabilities = inferred.capabilities
     sources = dict(inferred.sources)
 
-    # Merge precedence:
-    # inferred < sidecar < GameBus-native
     for src_bundle, src_name in [
         (sidecar, "sidecar"),
         (gamebus, "gamebus"),
@@ -37,8 +35,6 @@ def _merge_task_roles(
     sidecar: MetadataBundle,
     gamebus: MetadataBundle,
 ) -> list[TaskRoleAnnotation]:
-    # For now inferred contributes no task roles.
-    # Precedence is by presence: sidecar first, GameBus can later extend/override.
     merged: list[TaskRoleAnnotation] = []
     seen: set[tuple[str, str]] = set()
 
@@ -50,6 +46,22 @@ def _merge_task_roles(
             seen.add(key)
             merged.append(item)
 
+    return merged
+
+
+def _merge_theory_sources(
+    sidecar: MetadataBundle,
+    gamebus: MetadataBundle,
+) -> list[TheorySource]:
+    merged: list[TheorySource] = []
+    seen: set[str] = set()
+    for source_list in [sidecar.theory_sources, gamebus.theory_sources]:
+        for item in source_list:
+            key = item.source_id or item.title
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
     return merged
 
 
@@ -65,6 +77,14 @@ def load_merged_metadata_bundle(
     merged = MetadataBundle()
     merged.capabilities, merged.sources = _merge_capabilities(inferred, sidecar, gamebus)
     merged.task_roles = _merge_task_roles(inferred, sidecar, gamebus)
+    merged.theory_sources = _merge_theory_sources(sidecar, gamebus)
+
+    if sidecar.campaign_family.slug:
+        merged.campaign_family = sidecar.campaign_family
+    elif gamebus.campaign_family.slug:
+        merged.campaign_family = gamebus.campaign_family
+    else:
+        merged.campaign_family = inferred.campaign_family
 
     merged.notes.extend(inferred.notes)
     merged.notes.extend(sidecar.notes)
@@ -74,7 +94,6 @@ def load_merged_metadata_bundle(
     merged.missing.extend(sidecar.missing)
     merged.missing.extend(gamebus.missing)
 
-    # Validation notes become metadata notes for now
     merged.notes.extend(validate_capabilities(merged.capabilities))
     merged.notes.extend(validate_task_roles(merged.task_roles))
 

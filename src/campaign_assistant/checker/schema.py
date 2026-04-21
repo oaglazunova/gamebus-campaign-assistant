@@ -12,14 +12,27 @@ SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
 TTMSTRUCTURE = "ttm"
 
-# Default checks exposed in the UI / app flow
-DEFAULT_CHECKS = [
+UNIVERSAL_CHECKS = [
     REACHABILITY,
     CONSISTENCY,
     VISUALIZATIONINTERN,
-    TARGETPOINTSREACHABLE,
     SECRETS,
+    SPELLCHECKER,
+]
+
+CAPABILITY_GATED_CHECKS = [
+    TARGETPOINTSREACHABLE,
+]
+
+FAMILY_SPECIFIC_CHECKS = [
     TTMSTRUCTURE,
+]
+
+# Default checks exposed in the UI / app flow
+DEFAULT_CHECKS = [
+    *UNIVERSAL_CHECKS,
+    *CAPABILITY_GATED_CHECKS,
+    *FAMILY_SPECIFIC_CHECKS,
 ]
 
 # Human-friendly names for UI display

@@ -7,8 +7,10 @@ from typing import Any
 
 from campaign_assistant.metadata.models import (
     CampaignCapabilities,
+    CampaignFamily,
     MetadataBundle,
     TaskRoleAnnotation,
+    TheorySource,
 )
 
 
@@ -121,10 +123,6 @@ def save_task_roles_csv(
 
 
 def _apply_capability_payload(capabilities: CampaignCapabilities, payload: dict) -> dict[str, str]:
-    """
-    Apply payload values to capability fields if present.
-    Returns source map entries for fields that were set.
-    """
     source_map: dict[str, str] = {}
     for field_name in capabilities.__dataclass_fields__.keys():
         if field_name in payload:
@@ -133,15 +131,36 @@ def _apply_capability_payload(capabilities: CampaignCapabilities, payload: dict)
     return source_map
 
 
-def load_sidecar_metadata(workspace_root: str | Path) -> MetadataBundle:
-    """
-    Load assistant-side metadata from workspace sidecars.
+def _load_campaign_family(payload: dict[str, Any]) -> CampaignFamily:
+    family_payload = payload.get("campaign_family", {}) or {}
+    return CampaignFamily(
+        slug=str(family_payload.get("slug", "") or "").strip(),
+        display_name=str(family_payload.get("display_name", "") or "").strip(),
+        confidence=str(family_payload.get("confidence", "low") or "low").strip(),
+        source="sidecar" if family_payload else "",
+    )
 
-    Expected files (all optional for now):
-    - metadata/campaign_profile.json
-    - metadata/metadata_override.json
-    - metadata/task_roles.csv
-    """
+
+def _load_theory_sources(payload: dict[str, Any]) -> list[TheorySource]:
+    items = payload.get("theory_sources", []) or []
+    result: list[TheorySource] = []
+    for item in items:
+        result.append(
+            TheorySource(
+                source_id=str(item.get("source_id", "") or "").strip(),
+                title=str(item.get("title", "") or "").strip(),
+                kind=str(item.get("kind", "") or "").strip(),
+                role=str(item.get("role", "advisory") or "advisory").strip(),
+                scope=str(item.get("scope", "campaign_wide") or "campaign_wide").strip(),
+                tags=[str(x).strip().lower() for x in (item.get("tags") or []) if str(x).strip()],
+                path=str(item.get("path", "") or "").strip(),
+                notes=str(item.get("notes", "") or "").strip(),
+            )
+        )
+    return result
+
+
+def load_sidecar_metadata(workspace_root: str | Path) -> MetadataBundle:
     workspace_root = Path(workspace_root)
     metadata_dir = workspace_root / "metadata"
 
@@ -150,13 +169,12 @@ def load_sidecar_metadata(workspace_root: str | Path) -> MetadataBundle:
 
     profile_payload = _read_json(metadata_dir / "campaign_profile.json")
     override_payload = _read_json(metadata_dir / "metadata_override.json")
+    theory_payload = _read_json(metadata_dir / "theory_registry.json")
     task_roles = load_task_roles_csv(workspace_root)
 
-    # campaign_profile.json may either contain fields directly or under "capabilities"
     profile_caps = profile_payload.get("capabilities", profile_payload)
     bundle.sources.update(_apply_capability_payload(capabilities, profile_caps))
 
-    # override has higher priority than profile
     override_caps = override_payload.get("capabilities", override_payload)
     for field_name, value in override_caps.items():
         if field_name in capabilities.__dataclass_fields__:
@@ -165,10 +183,14 @@ def load_sidecar_metadata(workspace_root: str | Path) -> MetadataBundle:
 
     bundle.capabilities = capabilities
     bundle.task_roles = task_roles
+    bundle.campaign_family = _load_campaign_family(profile_payload)
+    bundle.theory_sources = _load_theory_sources(theory_payload)
 
     if not profile_payload:
         bundle.missing.append("No campaign_profile.json sidecar found.")
     if not task_roles:
         bundle.missing.append("No task_roles.csv sidecar found.")
+    if not theory_payload:
+        bundle.missing.append("No theory_registry.json sidecar found.")
 
     return bundle

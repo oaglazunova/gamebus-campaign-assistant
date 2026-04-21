@@ -1,0 +1,66 @@
+# workshop_constraints.template.yaml
+# Compact, structured extraction of workshop findings / stakeholder constraints.
+
+version: 1
+
+source:
+  workshop_id: "example-workshop-01"
+  date: "2026-01-15"
+  extracted_from: "workshop_notes.docx"
+  extracted_by: "organizer_name"
+
+global_constraints:
+  - id: "reduce_manual_burden"
+    type: "workflow"
+    statement: "Campaign creation should reduce repetitive manual work."
+    priority: "high"
+
+  - id: "human_approval_required"
+    type: "governance"
+    statement: "Changes proposed by the assistant must remain human-approved."
+    priority: "high"
+
+  - id: "coherent_ttm_application"
+    type: "theory"
+    statement: "TTM should be applied consistently across campaign dimensions."
+    priority: "high"
+
+subgroup_constraints:
+  - id: "older_adults_realistic_intensity"
+    subgroup:
+      age_group: "older_adults"
+    statement: "Requested activity levels must stay realistic for older adults."
+    priority: "high"
+
+  - id: "children_phone_only"
+    subgroup:
+      age_group: "children"
+    statement: "Assume phones only unless explicitly stated otherwise."
+    priority: "medium"
+
+game_mechanics_constraints:
+  - id: "progression_requires_gatekeeping"
+    statement: "Progression should not be reachable without gatekeeping tasks."
+    priority: "high"
+
+  - id: "maintenance_logic_explicit"
+    statement: "Maintenance and relapse logic should be explicit where used."
+    priority: "medium"
+
+content_constraints:
+  - id: "adapt_language_and_examples"
+    statement: "Language, examples, and imagery should fit age group and country."
+    priority: "high"
+
+  - id: "avoid_nudge_fatigue"
+    statement: "Notification and prompt burden should remain acceptable."
+    priority: "medium"
+
+open_questions:
+  - "Which tasks should be explicitly marked as gatekeeping?"
+  - "Which maintenance tasks are required for relapse/at-risk flows?"
+  - "Are there trial-specific point exceptions not captured in point_rules.yaml?"
+
+notes:
+  - "Keep this file compact and structured."
+  - "Use it as assistant input, not as a full workshop transcript replacement."
