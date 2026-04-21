@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from campaign_assistant.checker.schema import TTMSTRUCTURE
-
 
 @dataclass(slots=True)
 class LegacyCheckAdapter:
@@ -12,11 +10,9 @@ class LegacyCheckAdapter:
 
     def runners(self) -> dict[str, Callable[[], None]]:
         """
-        Expose only the legacy-backed checks that still remain in use.
-        """
-        return {
-            TTMSTRUCTURE: self._run_ttm,
-        }
+        Legacy execution is no longer used for checker runs.
 
-    def _run_ttm(self) -> None:
-        self.checker.checkTTMStructure()
+        The wrapper still borrows the legacy workbook loader for now,
+        but all checks are executed through native implementations.
+        """
+        return {}

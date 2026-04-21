@@ -27,8 +27,8 @@ from campaign_assistant.checker.native_consistency import run_native_consistency
 from campaign_assistant.checker.native_visualizationintern import run_native_visualizationintern_tables
 from campaign_assistant.checker.native_secrets import run_native_secrets_tables
 from campaign_assistant.checker.native_spellchecker import run_native_spellchecker_tables
-from campaign_assistant.checker.legacy_adapter import LegacyCheckAdapter
 from campaign_assistant.checker.native_targetpointsreachable import run_native_targetpointsreachable_tables
+from campaign_assistant.checker.native_ttm import run_native_ttm_tables
 
 
 HERE = Path(__file__).resolve().parent
@@ -236,9 +236,6 @@ def run_campaign_checks(
     checker = CampaignChecker(str(file_path))
     active_wave_ids = _active_wave_ids(checker)
 
-    legacy_adapter = LegacyCheckAdapter(checker)
-    legacy_check_runners = legacy_adapter.runners()
-
     check_status: Dict[str, str] = {}
     notes: List[str] = []
     native_issues_by_check: Dict[str, List[Issue]] = {}
@@ -250,6 +247,7 @@ def run_campaign_checks(
         SECRETS: run_native_secrets_tables,
         SPELLCHECKER: run_native_spellchecker_tables,
         TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
+        TTMSTRUCTURE: run_native_ttm_tables,
     }
 
     for check_name in checks:
@@ -262,12 +260,6 @@ def run_campaign_checks(
                 check_status[check_name] = native_result["status"]
                 native_issues_by_check[check_name] = native_result["issues"]
                 notes.extend(native_result.get("notes", []))
-                continue
-
-            legacy_runner = legacy_check_runners.get(check_name)
-            if legacy_runner is not None:
-                legacy_runner()
-                check_status[check_name] = checker.checkResult(check_name)
                 continue
 
             check_status[check_name] = "Error"

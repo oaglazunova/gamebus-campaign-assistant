@@ -17,6 +17,36 @@ from campaign_assistant.checker.wrapper import run_campaign_checks
 
 
 
+def _native_ttm_crash(*args, **kwargs):
+    raise RuntimeError("Boom")
+
+
+def _native_ttm_pass():
+    return {"status": "Passed", "issues": [], "notes": []}
+
+
+def _native_ttm_fail_active():
+    from campaign_assistant.checker.schema import Issue, TTMSTRUCTURE
+
+    return {
+        "status": "Failed",
+        "issues": [
+            Issue(
+                check=TTMSTRUCTURE,
+                severity="high",
+                active_wave=True,
+                visualization_id=11,
+                visualization="TTM Levels",
+                challenge_id=101,
+                challenge="Skilled",
+                wave_id=1,
+                message="Wrong TTM successor.",
+                url="https://example.com/vis/11/challenge/101",
+            )
+        ],
+        "notes": [],
+    }
+
 
 def _native_targetpoints_pass():
 	return {"status": "Passed", "issues": [], "notes": []}
@@ -292,6 +322,10 @@ def test_run_campaign_checks_returns_expected_structure(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_pass(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -307,13 +341,13 @@ def test_run_campaign_checks_returns_expected_structure(monkeypatch, tmp_path):
 
 	summary = result["summary"]
 
-	assert summary["total_issues"] == 1
-	assert TTMSTRUCTURE in summary["failed_checks"]
+	assert summary["total_issues"] == 0
+	assert TTMSTRUCTURE in summary["passed_checks"]
 	assert TARGETPOINTSREACHABLE in summary["passed_checks"]
 	assert REACHABILITY in summary["passed_checks"]
 	assert CONSISTENCY in summary["passed_checks"]
 
-	assert len(result["issues_by_check"][TTMSTRUCTURE]) == 1
+	assert len(result["issues_by_check"][TTMSTRUCTURE]) == 0
 	assert len(result["issues_by_check"][TARGETPOINTSREACHABLE]) == 0
 
 
@@ -343,6 +377,10 @@ def test_prioritized_issues_put_active_high_severity_first(monkeypatch, tmp_path
 	monkeypatch.setattr(
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_fail_inactive(),
+	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
 	)
 
 	result = run_campaign_checks(
@@ -389,6 +427,10 @@ def test_export_excel_creates_report(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_fail_inactive(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_pass(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -404,12 +446,15 @@ def test_export_excel_creates_report(monkeypatch, tmp_path):
 	# Verify legacy format
 	df = pd.read_excel(report_path, sheet_name="Errors")
 	assert list(df.columns) == ["Kind", "Visualization", "Challenge", "Error", "URL"]
-	assert len(df) == 2
-	assert df.iloc[0]["Kind"] == TTMSTRUCTURE
-	assert df.iloc[0]["Visualization"] == "TTM Levels"
-	assert df.iloc[0]["Challenge"] == "Skilled"
-	assert df.iloc[0]["Error"] == "Wrong TTM successor."
-	assert "https://example.com/vis/11/challenge/101" in df.iloc[0]["URL"]
+	assert len(df) == 1
+	assert df.iloc[0]["Kind"] == TARGETPOINTSREACHABLE
+	assert df.iloc[0]["Visualization"] == "Target Points Viz"
+	assert df.iloc[0]["Challenge"] == "Challenge Target"
+	assert "cannot be reached with tasks" in df.iloc[0]["Error"]
+	assert "https://example.com/targetpoints" in df.iloc[0]["URL"]
+
+
+
 
 
 def test_crashing_check_is_reported_as_error(monkeypatch, tmp_path):
@@ -437,6 +482,10 @@ def test_crashing_check_is_reported_as_error(monkeypatch, tmp_path):
 	monkeypatch.setattr(
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
+	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		_native_ttm_crash,
 	)
 
 	result = run_campaign_checks(
@@ -485,6 +534,10 @@ def test_wrapper_uses_native_reachability_path(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -530,6 +583,10 @@ def test_wrapper_uses_native_consistency_path(monkeypatch, tmp_path):
 	monkeypatch.setattr(
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
+	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
 	)
 
 	result = run_campaign_checks(
@@ -577,6 +634,10 @@ def test_wrapper_uses_native_visualizationintern_path(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -623,6 +684,10 @@ def test_wrapper_uses_native_secrets_path(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -668,6 +733,10 @@ def test_wrapper_uses_native_spellchecker_path(monkeypatch, tmp_path):
 	monkeypatch.setattr(
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
+	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
 	)
 
 	result = run_campaign_checks(
@@ -721,56 +790,6 @@ class RemainingLegacyTTMOnlyChecker(FakeChecker):
 
 
 
-def test_wrapper_routes_only_ttm_via_legacy_adapter(monkeypatch, tmp_path):
-	created = {}
-
-	def _factory(*args, **kwargs):
-		checker = RemainingLegacyTTMOnlyChecker(*args, **kwargs)
-		created["checker"] = checker
-		return checker
-
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.CampaignChecker",
-		_factory,
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_reachability_tables",
-		lambda *args, **kwargs: _native_reachability_pass(),
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_consistency_tables",
-		lambda *args, **kwargs: _native_consistency_pass(),
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_visualizationintern_tables",
-		lambda *args, **kwargs: _native_visualizationintern_pass(),
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_secrets_tables",
-		lambda *args, **kwargs: _native_secrets_pass(),
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_spellchecker_tables",
-		lambda *args, **kwargs: _native_spellchecker_pass(),
-	)
-	monkeypatch.setattr(
-		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
-		lambda *args, **kwargs: _native_targetpoints_fail_inactive(),
-	)
-
-	result = run_campaign_checks(
-		file_path=tmp_path / "campaign.xlsx",
-		checks=[TARGETPOINTSREACHABLE, TTMSTRUCTURE],
-		export_excel=False,
-	)
-
-	checker = created["checker"]
-	assert checker.called_ttm is True
-
-	summary = result["summary"]
-	assert TARGETPOINTSREACHABLE in summary["failed_checks"]
-	assert TTMSTRUCTURE in summary["failed_checks"]
-
 
 class TargetPointsMustNotBeCalledChecker(FakeChecker):
 	def checkChallengeTargetPointsCanBeReached(self):
@@ -809,6 +828,10 @@ def test_wrapper_uses_native_targetpointsreachable_path(monkeypatch, tmp_path):
 		"campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
 		lambda *args, **kwargs: _native_targetpoints_pass(),
 	)
+	monkeypatch.setattr(
+		"campaign_assistant.checker.wrapper.run_native_ttm_tables",
+		lambda *args, **kwargs: _native_ttm_fail_active(),
+	)
 
 	result = run_campaign_checks(
 		file_path=tmp_path / "campaign.xlsx",
@@ -819,3 +842,56 @@ def test_wrapper_uses_native_targetpointsreachable_path(monkeypatch, tmp_path):
 	summary = result["summary"]
 	assert TARGETPOINTSREACHABLE in summary["passed_checks"]
 	assert TTMSTRUCTURE in summary["failed_checks"]
+
+
+class TTMMustNotBeCalledChecker(FakeChecker):
+    def checkTTMstructure(self):
+        raise AssertionError("legacy ttm should not be called")
+
+    def checkTTMStructure(self):
+        raise AssertionError("legacy ttm alias should not be called")
+
+
+def test_wrapper_uses_native_ttm_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.CampaignChecker",
+        TTMMustNotBeCalledChecker,
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_reachability_tables",
+        lambda *args, **kwargs: _native_reachability_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_consistency_tables",
+        lambda *args, **kwargs: _native_consistency_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_visualizationintern_tables",
+        lambda *args, **kwargs: _native_visualizationintern_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_secrets_tables",
+        lambda *args, **kwargs: _native_secrets_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_spellchecker_tables",
+        lambda *args, **kwargs: _native_spellchecker_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_targetpointsreachable_tables",
+        lambda *args, **kwargs: _native_targetpoints_pass(),
+    )
+    monkeypatch.setattr(
+        "campaign_assistant.checker.wrapper.run_native_ttm_tables",
+        lambda *args, **kwargs: _native_ttm_fail_active(),
+    )
+
+    result = run_campaign_checks(
+        file_path=tmp_path / "campaign.xlsx",
+        checks=[TARGETPOINTSREACHABLE, TTMSTRUCTURE],
+        export_excel=False,
+    )
+
+    summary = result["summary"]
+    assert TARGETPOINTSREACHABLE in summary["passed_checks"]
+    assert TTMSTRUCTURE in summary["failed_checks"]
