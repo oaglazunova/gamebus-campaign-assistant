@@ -1,0 +1,24 @@
+{
+  "theory_sources": [
+    {
+      "source_id": "ttm-structure",
+      "title": "TTM Level Structure",
+      "kind": "theory",
+      "role": "normative",
+      "scope": "campaign_wide",
+      "tags": ["ttm", "transtheoretical_model", "stage_progression"],
+      "path": "evidence/theory/ttm_structure.pdf",
+      "notes": "Used to interpret stage progression and relapse/maintenance logic."
+    },
+    {
+      "source_id": "intervention-mapping",
+      "title": "Intervention Mapping",
+      "kind": "intervention_paper",
+      "role": "advisory",
+      "scope": "campaign_wide",
+      "tags": ["bct", "intervention_mapping"],
+      "path": "evidence/theory/intervention_mapping.xlsx",
+      "notes": "Supplementary source for behavior-change design rationale."
+    }
+  ]
+}

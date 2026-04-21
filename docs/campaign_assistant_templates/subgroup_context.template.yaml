@@ -1,0 +1,71 @@
+# subgroup_context.template.yaml
+# Campaign-specific subgroup constraints and adaptation context.
+
+version: 1
+
+dimensions:
+  age_groups:
+    - id: "children"
+      label: "Children"
+      min_age: 6
+      max_age: 12
+      notes:
+        - "Adjust phrasing, intensity, and examples."
+    - id: "adolescents"
+      label: "Adolescents"
+      min_age: 13
+      max_age: 17
+    - id: "older_adults"
+      label: "Older adults"
+      min_age: 65
+      max_age: null
+
+  countries:
+    - id: "nl"
+      label: "Netherlands"
+      language: "nl"
+    - id: "lu"
+      label: "Luxembourg"
+      language: "fr"
+    - id: "dk"
+      label: "Denmark"
+      language: "da"
+
+  treatment_groups:
+    - id: "control"
+      label: "Control"
+    - id: "intervention"
+      label: "Intervention"
+
+constraints:
+  - id: "children_no_wearables_assumption"
+    applies_to:
+      age_group: "children"
+    rule:
+      wearable_dependency_allowed: false
+      phone_only_supported: true
+    rationale: "Children in this trial may only use phones."
+
+  - id: "older_adults_lower_burden"
+    applies_to:
+      age_group: "older_adults"
+    rule:
+      max_prompt_burden: "lower"
+      intensity_adjustment_required: true
+    rationale: "Avoid unrealistic or demotivating tasks."
+
+adaptation_guidance:
+  phrasing:
+    children:
+      style: "simple_concrete_positive"
+    older_adults:
+      style: "clear_respectful_low_jargon"
+
+  content:
+    adjust_for_age_group: true
+    adjust_for_country: true
+    adjust_for_treatment_group: true
+    preserve_theory_alignment: true
+
+notes:
+  - "This file provides subgroup-specific context for checking and future content generation."

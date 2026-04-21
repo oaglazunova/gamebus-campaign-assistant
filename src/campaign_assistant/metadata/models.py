@@ -27,6 +27,32 @@ class CampaignCapabilities:
 
 
 @dataclass(slots=True)
+class CampaignFamily:
+    slug: str = ""
+    display_name: str = ""
+    confidence: str = "low"
+    source: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class TheorySource:
+    source_id: str = ""
+    title: str = ""
+    kind: str = ""
+    role: str = "advisory"
+    scope: str = "campaign_wide"
+    tags: list[str] = field(default_factory=list)
+    path: str = ""
+    notes: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class TaskRoleAnnotation:
     task_id: str = ""
     task_name: str = ""
@@ -44,29 +70,22 @@ class TaskRoleAnnotation:
 class MetadataBundle:
     """
     Merged metadata view used by the assistant.
-
-    This is the normalized object that downstream logic should eventually use,
-    regardless of whether the source was:
-    - inferred from the workbook
-    - sidecar files
-    - GameBus-native metadata
     """
     capabilities: CampaignCapabilities = field(default_factory=CampaignCapabilities)
     task_roles: list[TaskRoleAnnotation] = field(default_factory=list)
+    campaign_family: CampaignFamily = field(default_factory=CampaignFamily)
+    theory_sources: list[TheorySource] = field(default_factory=list)
 
-    # Tracks where fields came from, useful for transparency/debugging
     sources: dict[str, str] = field(default_factory=dict)
-
-    # User-visible / developer-visible notes
     notes: list[str] = field(default_factory=list)
-
-    # What is still missing or uncertain
     missing: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "capabilities": self.capabilities.to_dict(),
             "task_roles": [x.to_dict() for x in self.task_roles],
+            "campaign_family": self.campaign_family.to_dict(),
+            "theory_sources": [x.to_dict() for x in self.theory_sources],
             "sources": dict(self.sources),
             "notes": list(self.notes),
             "missing": list(self.missing),

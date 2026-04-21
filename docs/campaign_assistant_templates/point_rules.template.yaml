@@ -1,0 +1,52 @@
+# point_rules.template.yaml
+# Trial- or pilot-specific point logic. Keep this deterministic and explicit.
+
+version: 1
+
+defaults:
+  progression_enabled: true
+  gatekeeping_required: true
+  maintenance_logic_enabled: true
+
+rules:
+  # A rule can apply to the whole campaign or to a subgroup / wave / challenge subset.
+  - id: "default_progression_rule"
+    scope:
+      applies_to: "all"
+    policy:
+      target_points_must_be_reachable: true
+      target_points_must_require_gatekeeping: true
+      allow_progression_without_gatekeeper: false
+      require_explicit_gatekeeper_annotation: true
+      require_explicit_maintenance_annotation_for_relapse_logic: true
+
+  - id: "older_adults_w1"
+    scope:
+      wave_id: "W1"
+      group_id: "older_adults"
+    policy:
+      target_points_formula: "campaign_specific"
+      notes:
+        - "Replace with trial-specific formula or thresholds."
+        - "Example: target must be reachable only when all gatekeeping tasks are completed."
+
+challenge_overrides:
+  # Optional per-challenge overrides when the general rule is not enough.
+  - challenge_name: "Example challenge"
+    wave_id: "W1"
+    group_id: "older_adults"
+    gatekeeping:
+      require_explicit_annotation: true
+      minimum_gatekeeping_tasks: 1
+    maintenance:
+      require_explicit_annotation: true
+    points:
+      target_points: 100
+      theoretical_max_points: null
+      must_require_gatekeeper: true
+    notes:
+      - "Use this section only for campaign-specific exceptions."
+
+validation_guidance:
+  - "If gatekeeping tasks are not yet annotated, annotate them first."
+  - "Then rerun analysis before deciding on stronger point fixes."

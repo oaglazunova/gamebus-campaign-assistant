@@ -1,0 +1,15 @@
+{
+  "campaign_family": {
+    "slug": "healthyw8_long_term_trial",
+    "display_name": "HealthyW8 Long-Term Trial",
+    "confidence": "high"
+  },
+  "capabilities": {
+    "uses_progression": true,
+    "uses_gatekeeping": true,
+    "uses_maintenance_tasks": true,
+    "uses_ttm": true,
+    "uses_wave_specific_logic": true,
+    "uses_group_specific_logic": true
+  }
+}

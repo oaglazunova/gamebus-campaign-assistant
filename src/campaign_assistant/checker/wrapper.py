@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
+
+import pandas as pd
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import pandas as pd
 
 from campaign_assistant.checker.prioritization import issue_priority_score
 from campaign_assistant.checker.schema import (
@@ -21,6 +22,14 @@ from campaign_assistant.checker.schema import (
     VISUALIZATIONINTERN,
     SEVERITY_BY_CHECK,
 )
+from campaign_assistant.checker.native_reachability import run_native_reachability_tables
+from campaign_assistant.checker.native_consistency import run_native_consistency_tables
+from campaign_assistant.checker.native_visualizationintern import run_native_visualizationintern_tables
+from campaign_assistant.checker.native_secrets import run_native_secrets_tables
+from campaign_assistant.checker.native_spellchecker import run_native_spellchecker_tables
+from campaign_assistant.checker.native_targetpointsreachable import run_native_targetpointsreachable_tables
+from campaign_assistant.checker.native_ttm import run_native_ttm_tables
+
 
 HERE = Path(__file__).resolve().parent
 PACKAGE_ROOT = HERE.parent
@@ -43,6 +52,14 @@ def _patch_legacy_checker() -> None:
     """
     if not hasattr(CampaignChecker, "addErrors"):
         CampaignChecker.addErrors = CampaignChecker.addError
+
+    if not hasattr(CampaignChecker, "checkTargetPointsReachable"):
+        CampaignChecker.checkTargetPointsReachable = (
+            CampaignChecker.checkChallengeTargetPointsCanBeReached
+        )
+
+    if not hasattr(CampaignChecker, "checkTTMStructure"):
+        CampaignChecker.checkTTMStructure = CampaignChecker.checkTTMstructure
 
     def reachable_challenges_intern(self, challenge, visitedids=None):
         if visitedids is None:
@@ -219,31 +236,44 @@ def run_campaign_checks(
     checker = CampaignChecker(str(file_path))
     active_wave_ids = _active_wave_ids(checker)
 
-    method_map = {
-        REACHABILITY: checker.checkInitialAndTerminalReachability,
-        CONSISTENCY: checker.checkIntialandTerminalLevelConsistentSuccessors,
-        VISUALIZATIONINTERN: checker.checkAllReachableChallengesAreInSameVisualizationAndLabel,
-        TARGETPOINTSREACHABLE: checker.checkChallengeTargetPointsCanBeReached,
-        SECRETS: lambda: checker.checkTasksHaveSecrets(False),
-        TTMSTRUCTURE: checker.checkTTMstructure,
-        SPELLCHECKER: checker.spellcheckTaskAndChallenges,
-    }
-
     check_status: Dict[str, str] = {}
     notes: List[str] = []
+    native_issues_by_check: Dict[str, List[Issue]] = {}
+
+    native_check_runners = {
+        REACHABILITY: run_native_reachability_tables,
+        CONSISTENCY: run_native_consistency_tables,
+        VISUALIZATIONINTERN: run_native_visualizationintern_tables,
+        SECRETS: run_native_secrets_tables,
+        SPELLCHECKER: run_native_spellchecker_tables,
+        TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
+        TTMSTRUCTURE: run_native_ttm_tables,
+    }
 
     for check_name in checks:
-        fn = method_map[check_name]
         try:
-            fn()
-            check_status[check_name] = checker.checkResult(check_name)
+            if check_name in native_check_runners:
+                native_result = native_check_runners[check_name](
+                    checker.gc,
+                    now=_get_now_timestamp(),
+                )
+                check_status[check_name] = native_result["status"]
+                native_issues_by_check[check_name] = native_result["issues"]
+                notes.extend(native_result.get("notes", []))
+                continue
+
+            check_status[check_name] = "Error"
+            notes.append(f"Unknown check '{check_name}'")
         except Exception as exc:
             check_status[check_name] = "Error"
             notes.append(f"Check '{check_name}' crashed: {exc}")
 
     issues: List[Issue] = []
+    for native_issues in native_issues_by_check.values():
+        issues.extend(native_issues)
+
     for check_name, raw_issues in checker.errors.items():
-        if check_name not in checks:
+        if check_name not in checks or check_name in native_issues_by_check:
             continue
         for raw in raw_issues:
             issues.append(_issue_from_legacy(check_name, checker, raw, active_wave_ids))
