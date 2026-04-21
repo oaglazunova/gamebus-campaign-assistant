@@ -37,9 +37,10 @@ class TheoryGroundingAgent(BaseAgent):
             return bool(theory_applicability["ttm_grounding"])
 
         validator_applicability = capability_summary.get("validator_applicability", {}) or {}
-        if "ttm_structure" in validator_applicability:
-            return bool(validator_applicability["ttm_structure"])
+        if "ttm" in validator_applicability:
+            return bool(validator_applicability["ttm"])
 
+        # compatibility fallback only
         active_modules = capability_summary.get("active_modules", {}) or {}
         if "ttm_checks" in active_modules:
             return bool(active_modules["ttm_checks"])

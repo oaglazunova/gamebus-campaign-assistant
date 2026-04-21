@@ -5,6 +5,62 @@ from campaign_assistant.metadata import load_merged_metadata_bundle
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
 
 
+def _theory_tags(metadata_bundle) -> list[str]:
+    return sorted(
+        {
+            str(tag).strip().lower()
+            for item in getattr(metadata_bundle, "theory_sources", []) or []
+            for tag in getattr(item, "tags", []) or []
+            if str(tag).strip()
+        }
+    )
+
+
+def _resolve_ttm_enabled(capabilities: dict, theory_tags: list[str]) -> bool:
+    if capabilities.get("uses_ttm") is True:
+        return True
+    return "ttm" in theory_tags or "transtheoretical_model" in theory_tags
+
+
+def _build_validator_applicability(capabilities: dict, ttm_enabled: bool) -> dict[str, bool]:
+    point_gatekeeping_enabled = capabilities.get("uses_progression") is not False
+
+    return {
+        "universal_structural": True,
+        "targetpointsreachable": point_gatekeeping_enabled,
+        "ttm": ttm_enabled,
+    }
+
+
+def _build_theory_applicability(ttm_enabled: bool) -> dict[str, bool]:
+    return {
+        "ttm_grounding": ttm_enabled,
+    }
+
+
+def _build_active_modules_compatibility(
+    *,
+    validator_applicability: dict[str, bool],
+    theory_applicability: dict[str, bool],
+) -> dict[str, object]:
+    """
+    Backward-compatible shape for older tests/UI.
+
+    New code should prefer validator_applicability and theory_applicability directly.
+    """
+    return {
+        # canonical nested structures
+        "validator_applicability": validator_applicability,
+        "theory_applicability": theory_applicability,
+
+        # legacy compatibility aliases
+        "structural_checks": validator_applicability.get("universal_structural", False),
+        "point_gatekeeping_checks": validator_applicability.get("targetpointsreachable", False),
+        "ttm_checks": theory_applicability.get("ttm_grounding", False),
+        "content_fix_suggestions": True,
+    }
+
+
 class CapabilityResolverAgent(BaseAgent):
     name = "capability_resolver_agent"
 
@@ -15,36 +71,15 @@ class CapabilityResolverAgent(BaseAgent):
         )
 
         capabilities = metadata_bundle.capabilities.to_dict()
-        theory_tags = sorted({tag for item in metadata_bundle.theory_sources for tag in item.tags})
+        theory_tags = _theory_tags(metadata_bundle)
+        ttm_enabled = _resolve_ttm_enabled(capabilities, theory_tags)
 
-        ttm_enabled = capabilities.get("uses_ttm") is True or any(
-            "ttm" in {str(tag).strip().lower() for tag in getattr(source, "tags", [])}
-            for source in metadata_bundle.theory_sources
+        validator_applicability = _build_validator_applicability(capabilities, ttm_enabled)
+        theory_applicability = _build_theory_applicability(ttm_enabled)
+        active_modules = _build_active_modules_compatibility(
+            validator_applicability=validator_applicability,
+            theory_applicability=theory_applicability,
         )
-
-        point_gatekeeping_enabled = capabilities.get("uses_progression") is not False
-
-        validator_applicability = {
-            "universal_structural": True,
-            "targetpointsreachable": point_gatekeeping_enabled,
-            "ttm_structure": ttm_enabled,
-        }
-
-        theory_applicability = {
-            "ttm_grounding": ttm_enabled,
-        }
-
-        active_modules = {
-            # canonical new structure
-            "validator_applicability": validator_applicability,
-            "theory_applicability": theory_applicability,
-
-            # backward-compatible aliases for older UI/tests
-            "structural_checks": True,
-            "point_gatekeeping_checks": point_gatekeeping_enabled,
-            "ttm_checks": ttm_enabled,
-            "content_fix_suggestions": True,
-        }
 
         active_validators = [
             name
@@ -73,7 +108,9 @@ class CapabilityResolverAgent(BaseAgent):
         lines = []
         lines.append("Resolved campaign capability profile from inferred structure and workspace sidecars.")
         if metadata_bundle.campaign_family.slug:
-            lines.append(f"Campaign family: {metadata_bundle.campaign_family.display_name or metadata_bundle.campaign_family.slug}.")
+            lines.append(
+                f"Campaign family: {metadata_bundle.campaign_family.display_name or metadata_bundle.campaign_family.slug}."
+            )
         if metadata_bundle.missing:
             lines.append(f"{len(metadata_bundle.missing)} metadata gap(s) remain.")
         if metadata_bundle.task_roles:

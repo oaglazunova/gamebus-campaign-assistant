@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from campaign_assistant.validators.base import BaseValidator, ValidationContext
 from campaign_assistant.validators.packs import (
-    HealthyW8LongTermTrialValidator,
     PointGatekeepingValidator,
+    TargetPointsReachableValidator,
+    TTMValidator,
     UniversalStructuralValidator,
 )
 
@@ -16,17 +17,18 @@ class ValidatorRegistry:
         self._validators.append(validator)
 
     def resolve(self, context: ValidationContext) -> list[BaseValidator]:
-        result: list[BaseValidator] = []
+        resolved: list[BaseValidator] = []
         for validator in self._validators:
             applicable, _reason = validator.is_applicable(context)
             if applicable:
-                result.append(validator)
-        return result
+                resolved.append(validator)
+        return resolved
 
 
 def build_default_validator_registry() -> ValidatorRegistry:
     registry = ValidatorRegistry()
     registry.register(UniversalStructuralValidator())
+    registry.register(TargetPointsReachableValidator())
     registry.register(PointGatekeepingValidator())
-    registry.register(HealthyW8LongTermTrialValidator())
+    registry.register(TTMValidator())
     return registry

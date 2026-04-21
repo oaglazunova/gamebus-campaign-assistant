@@ -98,11 +98,12 @@ class StructuralChangeAgent(BaseAgent):
         for validator in self.registry.resolve(validation_context):
             validator_names.append(validator.name)
             validator_result = validator.run(validation_context)
+            payload = validator_result.payload or {}
 
-            if validator.name in {"universal_structural", "healthyw8_long_term_trial"}:
-                result = _merge_checker_payload(result, validator_result.payload)
-            elif validator.name == "point_gatekeeping":
-                result["point_gatekeeping"] = validator_result.payload
+            if validator.name == "point_gatekeeping":
+                result["point_gatekeeping"] = payload
+            elif isinstance(payload, dict) and "summary" in payload and "issues_by_check" in payload:
+                result = _merge_checker_payload(result, payload)
 
             if validator_result.notes:
                 result.setdefault("notes", []).extend(validator_result.notes)
