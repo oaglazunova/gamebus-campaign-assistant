@@ -1,58 +1,51 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from campaign_assistant.agents.base import BaseAgent
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
+from campaign_assistant.privacy import PrivacyService
 
 
 class PrivacyGuardianAgent(BaseAgent):
     """
-    Minimal first version of the privacy guardian.
+    Phase 2 / Step 1 privacy boundary.
 
-    Right now it:
-    - records which files are allowed for downstream agents
-    - records a placeholder redaction policy
-    - stores this in the shared context for traceability
+    This agent now:
+    - inventories workspace assets
+    - classifies coarse sensitivity
+    - builds per-agent access policy
+    - stores both a compatibility access policy and a richer privacy_state
 
-    Later it can:
-    - redact fields before passing data to the ContentFixerAgent
-    - enforce per-agent access policies
-    - block unsafe requests
+    It does not yet:
+    - redact workbook cells
+    - rewrite findings
+    - enforce row-level blocking
     """
 
     name = "privacy_guardian"
 
-    def run(self, context: AgentContext) -> AgentResponse:
-        campaign_path = Path(context.file_path).resolve()
+    def __init__(self) -> None:
+        self.service = PrivacyService()
 
-        access_policy = {
-            "structural_change_agent": {
-                "allowed_paths": [str(campaign_path)],
-                "redactions": [],
-            },
-            # Placeholder for later agents:
-            "theory_grounding_agent": {
-                "allowed_paths": [str(campaign_path)],
-                "redactions": [],
-            },
-            "content_fixer_agent": {
-                "allowed_paths": [str(campaign_path)],
-                "redactions": [
-                    "redact_user_identifiers_before_content_fixing"
-                ],
-            },
-        }
+    def run(self, context: AgentContext) -> AgentResponse:
+        privacy_state = self.service.build_privacy_state(context)
+        access_policy = self.service.to_compatibility_access_policy(privacy_state)
 
         context.shared["privacy"] = access_policy
+        context.shared["privacy_state"] = privacy_state.to_dict()
+
+        summary = (
+            "Privacy policy initialized for this request. "
+            f"Detected {privacy_state.summary.get('asset_count', 0)} workspace asset(s); "
+            f"{len(privacy_state.summary.get('raw_workbook_allowed_agents', []))} agent(s) may access the raw workbook, "
+            f"and {len(privacy_state.summary.get('sanitized_only_agents', []))} agent(s) are restricted to sanitized/derived context."
+        )
 
         return AgentResponse(
             agent_name=self.name,
             success=True,
-            summary=(
-                "Privacy policy initialized for this request. "
-                "Structural analysis has full access to the campaign file; "
-                "future content-fixing runs must apply redaction rules."
-            ),
-            payload={"access_policy": access_policy},
+            summary=summary,
+            payload={
+                "access_policy": access_policy,
+                "privacy_summary": privacy_state.summary,
+            },
         )

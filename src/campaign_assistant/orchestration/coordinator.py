@@ -171,6 +171,7 @@ class CampaignAnalysisCoordinator:
                 "agents_run": [event.agent_name for event in trace],
                 "agent_trace": [event.to_dict() for event in trace],
                 "access_policy": context.shared.get("privacy", {}),
+                "privacy_state": context.shared.get("privacy_state", {}),
                 "loaded_profile_summary": {
                     "uses_ttm": context.analysis_profile.get("intervention_model", {}).get("uses_ttm"),
                     "uses_gatekeeping": context.analysis_profile.get("intervention_model", {}).get("uses_gatekeeping"),
