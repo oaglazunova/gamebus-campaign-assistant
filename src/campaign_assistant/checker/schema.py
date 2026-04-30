@@ -8,6 +8,7 @@ CONSISTENCY = "consistency"
 VISUALIZATIONINTERN = "visualizationintern"
 REACHABILITY = "reachability"
 TARGETPOINTSREACHABLE = "targetpointsreachable"
+GATEKEEPINGSEMANTICS = "gatekeeping_semantics"
 SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
 TTMSTRUCTURE = "ttm"
@@ -22,6 +23,7 @@ UNIVERSAL_CHECKS = [
 
 CAPABILITY_GATED_CHECKS = [
     TARGETPOINTSREACHABLE,
+    GATEKEEPINGSEMANTICS,
 ]
 
 FAMILY_SPECIFIC_CHECKS = [
@@ -29,14 +31,17 @@ FAMILY_SPECIFIC_CHECKS = [
 ]
 
 # Checks shown/used in the normal app flow
+# Keep the new gatekeeping semantics check out of the flat UI for one step.
+# We will expose it when the grouped/disabled check UI is introduced.
 DEFAULT_CHECKS = [
     *UNIVERSAL_CHECKS,
-    *CAPABILITY_GATED_CHECKS,
+    TARGETPOINTSREACHABLE,
 ]
 
-# Complete list including legacy/family-specific checks kept for reference
+# Complete list including hidden future/current non-default checks and legacy checks
 ALL_CHECKS = [
     *DEFAULT_CHECKS,
+    GATEKEEPINGSEMANTICS,
     *FAMILY_SPECIFIC_CHECKS,
 ]
 
@@ -46,6 +51,7 @@ FRIENDLY_CHECK_NAMES = {
     CONSISTENCY: "Consistency",
     VISUALIZATIONINTERN: "Visualization internals",
     TARGETPOINTSREACHABLE: "Target points reachable",
+    GATEKEEPINGSEMANTICS: "Gatekeeping semantics",
     SECRETS: "Secrets",
     SPELLCHECKER: "Spellchecker",
     TTMSTRUCTURE: "TTM structure",
@@ -55,6 +61,7 @@ FRIENDLY_CHECK_NAMES = {
 SEVERITY_BY_CHECK = {
     TTMSTRUCTURE: "high",
     TARGETPOINTSREACHABLE: "high",
+    GATEKEEPINGSEMANTICS: "high",
     REACHABILITY: "high",
     CONSISTENCY: "high",
     VISUALIZATIONINTERN: "medium",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from campaign_assistant.legacy import LegacyTTMValidator
 from campaign_assistant.validators.base import BaseValidator, ValidationContext
 from campaign_assistant.validators.packs import (
-    PointGatekeepingValidator,
+    GatekeepingSemanticsValidator,
     TargetPointsReachableValidator,
     UniversalStructuralValidator,
 )
@@ -29,7 +29,7 @@ def build_default_validator_registry(*, include_legacy: bool = False) -> Validat
     registry = ValidatorRegistry()
     registry.register(UniversalStructuralValidator())
     registry.register(TargetPointsReachableValidator())
-    registry.register(PointGatekeepingValidator())
+    registry.register(GatekeepingSemanticsValidator())
 
     if include_legacy:
         registry.register(LegacyTTMValidator())

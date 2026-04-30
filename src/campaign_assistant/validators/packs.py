@@ -9,7 +9,7 @@ from campaign_assistant.checker.native_targetpointsreachable import (
     run_native_targetpointsreachable_check,
 )
 from campaign_assistant.checker.schema import (
-    CAPABILITY_GATED_CHECKS,
+    GATEKEEPINGSEMANTICS,
     TARGETPOINTSREACHABLE,
     UNIVERSAL_CHECKS,
 )
@@ -70,6 +70,11 @@ def _validator_applicability(context: ValidationContext) -> dict[str, bool]:
     return dict(summary.get("validator_applicability") or {})
 
 
+def _workspace_readiness(context: ValidationContext) -> dict[str, Any]:
+    summary = context.capability_summary or {}
+    return dict(summary.get("workspace_readiness") or {})
+
+
 class UniversalStructuralValidator(BaseValidator):
     name = "universal_structural"
 
@@ -121,23 +126,32 @@ class TargetPointsReachableValidator(BaseValidator):
         return ValidationResult(validator_name=self.name, success=True, payload=payload)
 
 
-class PointGatekeepingValidator(BaseValidator):
-    name = "point_gatekeeping"
+class GatekeepingSemanticsValidator(BaseValidator):
+    name = GATEKEEPINGSEMANTICS
 
     def __init__(self) -> None:
         self.service = PointGatekeepingService()
 
     def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
+        if GATEKEEPINGSEMANTICS not in context.selected_checks:
+            return False, "Gatekeeping semantics was not selected."
+
         capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        selected = _selected_subset(context.selected_checks, CAPABILITY_GATED_CHECKS)
-
-        if not selected and TARGETPOINTSREACHABLE not in context.selected_checks:
-            return False, "No progression-aware checks were selected."
-
         if capabilities.get("uses_progression") is False:
             return False, "Campaign explicitly does not use progression."
 
-        return True, "Point/gatekeeping reasoning is applicable."
+        readiness = _workspace_readiness(context)
+        if not readiness:
+            return False, "Workspace readiness has not been computed yet."
+
+        if not readiness.get("progression_applicable", False):
+            return False, "Progression is not applicable."
+
+        if not readiness.get("gatekeeping_semantics_ready", False):
+            reasons = list(readiness.get("reasons", []) or [])
+            return False, reasons[0] if reasons else "Gatekeeping semantics is disabled until required annotations are present."
+
+        return True, "Workspace is ready for stronger gatekeeping semantics validation."
 
     def run(self, context: ValidationContext) -> ValidationResult:
         payload = self.service.analyze(
@@ -147,6 +161,9 @@ class PointGatekeepingValidator(BaseValidator):
         )
         return ValidationResult(validator_name=self.name, success=True, payload=payload)
 
+
+# Backward-compatible alias for any old imports/tests that still use the old class name.
+PointGatekeepingValidator = GatekeepingSemanticsValidator
 
 # Backward-compatible import alias.
 # The legacy validator is no longer part of the default registry,

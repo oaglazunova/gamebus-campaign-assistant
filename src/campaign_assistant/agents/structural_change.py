@@ -109,7 +109,7 @@ class StructuralChangeAgent(BaseAgent):
             validator_result = validator.run(validation_context)
             payload = validator_result.payload or {}
 
-            if validator.name == "point_gatekeeping":
+            if validator.name in {"point_gatekeeping", "gatekeeping_semantics"}:
                 result["point_gatekeeping"] = payload
             elif isinstance(payload, dict) and "summary" in payload and "issues_by_check" in payload:
                 result = _merge_checker_payload(result, payload)

@@ -3,6 +3,7 @@ from campaign_assistant.agents.capability_resolver import CapabilityResolverAgen
 from campaign_assistant.agents.structural_change import StructuralChangeAgent
 from campaign_assistant.agents.theory_grounding import TheoryGroundingAgent
 from campaign_assistant.agents.content_fixer import ContentFixerAgent
+from campaign_assistant.agents.workspace_readiness import WorkspaceReadinessAgent
 
 __all__ = [
     "PrivacyGuardianAgent",
@@ -10,4 +11,5 @@ __all__ = [
     "StructuralChangeAgent",
     "TheoryGroundingAgent",
     "ContentFixerAgent",
+    "WorkspaceReadinessAgent",
 ]

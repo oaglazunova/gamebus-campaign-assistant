@@ -875,6 +875,17 @@ class PrivacyService:
                 rationale="Fix generation should operate on summarized metadata and derived findings, not raw workbook contents.",
                 policy_source="baseline",
             ),
+            "workspace_readiness_agent": AgentPrivacyPolicy(
+                agent_name="workspace_readiness_agent",
+                allowed_asset_ids=workbook_only + metadata_assets,
+                allowed_paths=_paths(workbook_only + metadata_assets),
+                allow_raw_workbook=True,
+                allowed_context_keys=["analysis_profile", "point_rules", "task_roles", "capability_summary",
+                                      "metadata_bundle"],
+                redactions=[],
+                rationale="Workspace readiness assessment is deterministic and may inspect raw workbook structure plus workspace annotations.",
+                policy_source="baseline",
+            ),
         }
 
     def _build_summary(

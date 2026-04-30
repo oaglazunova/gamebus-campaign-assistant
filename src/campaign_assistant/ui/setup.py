@@ -16,6 +16,7 @@ from campaign_assistant.metadata.adapters.sidecar import (
 	save_workspace_bytes,
 )
 from campaign_assistant.ui.privacy_diagnostics import render_privacy_diagnostics_panel
+from campaign_assistant.ui.workspace_readiness import build_workspace_readiness_model
 
 
 _CAPABILITY_FIELDS = [
@@ -152,6 +153,68 @@ def _collect_profile_from_widgets(request_id: str) -> dict[str, Any]:
 	return {"capabilities": capabilities}
 
 
+
+def _apply_workspace_action(action: dict[str, Any] | None, request_id: str) -> None:
+	if not action:
+		return
+
+	focus = str(action.get("focus") or "").strip()
+	if not focus:
+		return
+
+	st.session_state[f"campaign-setup-focus-{request_id}"] = focus
+	st.rerun()
+
+
+def _render_workspace_readiness_section(result: dict[str, Any], request_id: str) -> None:
+	model = build_workspace_readiness_model(result)
+	if not model["has_readiness"]:
+		return
+
+	st.markdown("### Workspace readiness")
+
+	if model["status"] == "not_applicable":
+		st.info("Progression/gatekeeping-specific validation is not applicable for this campaign.")
+	elif model["status"] == "ready":
+		st.success("Progression basics are available and stronger gatekeeping semantics checks are ready.")
+	else:
+		st.warning("Progression basics are available, but stronger gatekeeping semantics checks are disabled until required annotations are added.")
+
+	col1, col2, col3 = st.columns(3)
+	col1.metric(
+		"Progression applicable",
+		"Yes" if model["progression_applicable"] else "No",
+	)
+	col2.metric(
+		"Gatekeeping annotated",
+		"Yes" if model["gatekeeping_annotations_present"] else "No",
+	)
+	col3.metric(
+		"Maintenance annotated",
+		"Yes" if model["maintenance_annotations_present"] else "No",
+	)
+
+	summary = model["point_readiness_summary"]
+	if summary:
+		st.caption(
+			f"Challenge findings: {int(summary.get('challenge_findings', 0) or 0)} | "
+			f"Missing gatekeeping annotations: {int(summary.get('missing_gatekeeping_annotation_count', 0) or 0)} | "
+			f"Missing maintenance annotations: {int(summary.get('missing_maintenance_annotation_count', 0) or 0)}"
+		)
+
+	if model["reasons"]:
+		for msg in model["reasons"]:
+			st.write(f"- {msg}")
+
+	if model["actions"]:
+		action = model["actions"][0]
+		label = str(action.get("label") or "Open related setup")
+		if st.button(label, key=f"workspace-readiness-action-{request_id}"):
+			_apply_workspace_action(action, request_id)
+
+
+
+
 def build_setup_conflict_messages(result: dict[str, Any]) -> list[str]:
 	messages: list[str] = []
 
@@ -233,6 +296,8 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 
 	privacy_report = dict(assistant_meta.get("privacy_report", {}) or {})
 	render_privacy_diagnostics_panel(privacy_report)
+
+	_render_workspace_readiness_section(result, request_id)
 
 	_ensure_profile_widget_defaults(workspace_root, request_id, result)
 

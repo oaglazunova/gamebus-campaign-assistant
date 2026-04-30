@@ -14,6 +14,9 @@ from campaign_assistant.storage import (
     save_settings,
 )
 from campaign_assistant.ui.privacy_diagnostics import render_privacy_diagnostics_sidebar
+from campaign_assistant.ui.check_picker import render_check_picker
+from campaign_assistant.ui.workspace_readiness import build_workspace_readiness_model
+
 
 
 def _source_mode_index(options: list[str], last_value: str) -> int:
@@ -21,6 +24,19 @@ def _source_mode_index(options: list[str], last_value: str) -> int:
         return options.index(last_value)
     except ValueError:
         return 0
+
+
+def _sidebar_workspace_readiness_hint(result: dict[str, Any] | None) -> None:
+	model = build_workspace_readiness_model(result)
+
+	if not model["has_readiness"]:
+		return
+
+	if model["status"] == "needs_annotations":
+		st.caption("Some stronger progression checks are disabled until task-role annotations are added.")
+	elif model["status"] == "ready":
+		st.caption("Progression semantics checks are ready in this workspace.")
+
 
 
 def render_sidebar() -> Dict[str, Any]:
@@ -125,12 +141,8 @@ def render_sidebar() -> Dict[str, Any]:
                 settings["last_campaign_abbreviation"] = campaign_abbreviation
 
         with st.expander("Checks", expanded=True):
-            selected_checks = st.multiselect(
-                "Checks to run",
-                options=DEFAULT_CHECKS,
-                default=DEFAULT_CHECKS,
-                format_func=lambda name: FRIENDLY_CHECK_NAMES.get(name, name),
-            )
+            _sidebar_workspace_readiness_hint(result)
+            selected_checks = render_check_picker(result)
 
         with st.expander("Display", expanded=False):
             show_agent_trace = st.checkbox(

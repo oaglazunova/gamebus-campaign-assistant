@@ -7,6 +7,7 @@ from campaign_assistant.agents.content_fixer import ContentFixerAgent
 from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 from campaign_assistant.agents.structural_change import StructuralChangeAgent
 from campaign_assistant.agents.theory_grounding import TheoryGroundingAgent
+from campaign_assistant.agents.workspace_readiness import WorkspaceReadinessAgent
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse, AgentTraceEvent
 from campaign_assistant.session_logging import SessionLogger
 from campaign_assistant.workspace import get_or_create_workspace_for_campaign
@@ -21,21 +22,17 @@ class CampaignAnalysisCoordinator:
         UI -> Coordinator -> Workspace loader
            -> PrivacyGuardian
            -> CapabilityResolver
+           -> WorkspaceReadinessAgent
            -> StructuralChangeAgent
            -> TheoryGroundingAgent
            -> ContentFixerAgent
-
-    This flow now distinguishes:
-    - metadata/capability resolution
-    - structural analysis
-    - theory grounding
-    - fix proposal generation
     """
 
     def __init__(self, logger: SessionLogger | None = None):
         self.logger = logger
         self.privacy_guardian = PrivacyGuardianAgent()
         self.capability_resolver = CapabilityResolverAgent()
+        self.workspace_readiness_agent = WorkspaceReadinessAgent()
         self.structural_agent = StructuralChangeAgent()
         self.theory_agent = TheoryGroundingAgent()
         self.content_fixer_agent = ContentFixerAgent()
@@ -113,51 +110,53 @@ class CampaignAnalysisCoordinator:
 
         trace: list[AgentTraceEvent] = []
 
-        # Step 1: privacy / access policy
         privacy_response = self.privacy_guardian.run(context)
         self._log_agent_step(request_id, privacy_response)
         trace.append(self._trace_event(step=1, response=privacy_response))
         if not privacy_response.success:
             raise RuntimeError(f"Privacy guardian failed: {privacy_response.summary}")
 
-        # Step 2: capability resolution
         capability_response = self.capability_resolver.run(context)
         self._log_agent_step(request_id, capability_response)
         trace.append(self._trace_event(step=2, response=capability_response))
         if not capability_response.success:
             raise RuntimeError(f"Capability resolver failed: {capability_response.summary}")
 
-        # Step 3: structural analysis
+        workspace_readiness_response = self.workspace_readiness_agent.run(context)
+        self._log_agent_step(request_id, workspace_readiness_response)
+        trace.append(self._trace_event(step=3, response=workspace_readiness_response))
+        if not workspace_readiness_response.success:
+            raise RuntimeError(f"Workspace readiness agent failed: {workspace_readiness_response.summary}")
+
         structural_response = self.structural_agent.run(context)
         self._log_agent_step(request_id, structural_response)
-        trace.append(self._trace_event(step=3, response=structural_response))
+        trace.append(self._trace_event(step=4, response=structural_response))
         if not structural_response.success:
             raise RuntimeError(f"Structural agent failed: {structural_response.summary}")
 
-        # Capability-aware interpretation of the raw structural result
         if "result" in context.shared:
             context.shared["result"] = apply_capability_applicability(
                 context.shared["result"],
                 context.shared.get("capability_summary", {}),
             )
 
-        # Step 4: theory grounding
         theory_response = self.theory_agent.run(context)
         self._log_agent_step(request_id, theory_response)
-        trace.append(self._trace_event(step=4, response=theory_response))
+        trace.append(self._trace_event(step=5, response=theory_response))
         if not theory_response.success:
             raise RuntimeError(f"Theory grounding agent failed: {theory_response.summary}")
 
-        # Step 5: fix proposals
         fixer_response = self.content_fixer_agent.run(context)
         self._log_agent_step(request_id, fixer_response)
-        trace.append(self._trace_event(step=5, response=fixer_response))
+        trace.append(self._trace_event(step=6, response=fixer_response))
         if not fixer_response.success:
             raise RuntimeError(f"Content/fixer agent failed: {fixer_response.summary}")
 
         result = context.shared["result"]
         result["theory_grounding"] = context.shared.get("theory_grounding", {})
         result["fix_proposals"] = context.shared.get("fix_proposals", {})
+
+        metadata_bundle = context.shared.get("metadata_bundle")
 
         assistant_meta = result.setdefault("assistant_meta", {})
         assistant_meta.update(
@@ -170,7 +169,7 @@ class CampaignAnalysisCoordinator:
                 "selected_checks": list(selected_checks),
                 "agents_run": [event.agent_name for event in trace],
                 "agent_trace": [event.to_dict() for event in trace],
-                 "access_policy": context.shared.get("privacy", {}),
+                "access_policy": context.shared.get("privacy", {}),
                 "privacy_state": context.shared.get("privacy_state", {}),
                 "privacy_report": context.shared.get("privacy_report", {}),
                 "loaded_profile_summary": {
@@ -180,9 +179,8 @@ class CampaignAnalysisCoordinator:
                     "task_role_count": len(context.task_roles),
                 },
                 "capability_summary": context.shared.get("capability_summary", {}),
-                "metadata_bundle": context.shared.get("metadata_bundle").to_dict()
-                if context.shared.get("metadata_bundle") is not None
-                else {},
+                "metadata_bundle": metadata_bundle.to_dict() if metadata_bundle is not None else {},
+                "workspace_readiness": context.shared.get("workspace_readiness", {}),
             }
         )
 
