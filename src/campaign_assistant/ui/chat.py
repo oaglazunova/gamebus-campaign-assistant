@@ -19,6 +19,7 @@ from campaign_assistant.proposals import (
 	annotate_proposal_groups_with_context,
 	matches_group_focus,
 )
+from campaign_assistant.ui.overview import render_analysis_overview
 
 
 HARD_MAX_ISSUES_TO_RENDER = 100
@@ -1291,3 +1292,17 @@ def render_agent_trace_panel(result: Dict[str, Any], show_trace: bool) -> None:
 
 	st.subheader("Agent reasoning trace")
 	st.markdown(_build_agent_trace_markdown(result, max_items=TRACE_EVENTS_MAX))
+
+
+def render_analysis_panels(result: Dict[str, Any], show_trace: bool) -> None:
+	if not result:
+		st.info("No campaign has been analyzed yet.")
+		return
+
+	render_analysis_overview(result)
+	render_capability_panel(result)
+	render_theory_panel(result)
+	render_point_gatekeeping_panel(result)
+	render_fix_proposals_panel(result)
+	render_issues_panel(result)
+	render_agent_trace_panel(result, show_trace)

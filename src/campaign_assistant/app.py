@@ -20,6 +20,7 @@ from campaign_assistant.ui.setup import render_campaign_setup_panel
 from campaign_assistant.ui.session import init_state
 from campaign_assistant.ui.sidebar import render_sidebar
 from campaign_assistant.file_utils import sha256_file
+from campaign_assistant.ui.chat import render_analysis_panels
 
 
 st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", layout="wide")
@@ -264,15 +265,8 @@ def _render_editor_only() -> None:
 		return
 
 	render_campaign_setup_panel(result)
-	render_capability_panel(result)
-	render_theory_panel(result)
-	render_point_gatekeeping_panel(result)
-	render_fix_proposals_panel(result)
-	render_issues_panel(result)
-	render_agent_trace_panel(
-		result,
-		show_trace=bool(st.session_state.get("show_agent_trace", False)),
-	)
+	render_analysis_panels(result, show_trace=bool(st.session_state.get("show_agent_trace", False)))
+
 
 
 def main() -> None:
