@@ -4,6 +4,7 @@ from typing import Any
 
 from campaign_assistant.agents.base import BaseAgent
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
+from campaign_assistant.privacy import PrivacyService
 from campaign_assistant.validators import ValidationContext, build_default_validator_registry
 
 
@@ -79,8 +80,16 @@ class StructuralChangeAgent(BaseAgent):
 
     def __init__(self) -> None:
         self.registry = build_default_validator_registry()
+        self.privacy_service = PrivacyService()
 
     def run(self, context: AgentContext) -> AgentResponse:
+        run_info = (
+            self.privacy_service.start_agent_run(self.name, context)
+            if "privacy_state" in context.shared
+            else {}
+        )
+        agent_run_id = run_info.get("agent_run_id")
+
         validation_context = ValidationContext(
             file_path=context.file_path,
             selected_checks=context.selected_checks,
@@ -128,14 +137,26 @@ class StructuralChangeAgent(BaseAgent):
         if pg_findings:
             text += f" Point/gatekeeping analysis highlighted {pg_findings} challenge(s) that may require attention."
 
+        payload = {
+            "result_summary": summary,
+            "excel_report_path": result.get("excel_report_path"),
+            "point_gatekeeping_summary": pg_summary,
+            "validator_names": validator_names,
+        }
+
+        self.privacy_service.record_agent_outcome(
+            agent_name=self.name,
+            context=context,
+            agent_run_id=agent_run_id,
+            success=True,
+            payload=payload,
+            warnings=[],
+            notes=list(result.get("notes", []) or []),
+        )
+
         return AgentResponse(
             agent_name=self.name,
             success=True,
             summary=text,
-            payload={
-                "result_summary": summary,
-                "excel_report_path": result.get("excel_report_path"),
-                "point_gatekeeping_summary": pg_summary,
-                "validator_names": validator_names,
-            },
+            payload=payload,
         )

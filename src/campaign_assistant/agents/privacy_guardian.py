@@ -7,18 +7,16 @@ from campaign_assistant.privacy import PrivacyService
 
 class PrivacyGuardianAgent(BaseAgent):
     """
-    Phase 2 / Step 1 privacy boundary.
+    Phase 2 privacy boundary bootstrap.
 
-    This agent now:
+    This agent:
     - inventories workspace assets
-    - classifies coarse sensitivity
-    - builds per-agent access policy
-    - stores both a compatibility access policy and a richer privacy_state
-
-    It does not yet:
-    - redact workbook cells
-    - rewrite findings
-    - enforce row-level blocking
+    - assigns coarse sensitivity labels
+    - defines per-agent access policy
+    - stores:
+        * compatibility access policy
+        * rich privacy_state
+        * compact privacy_report
     """
 
     name = "privacy_guardian"
@@ -27,17 +25,20 @@ class PrivacyGuardianAgent(BaseAgent):
         self.service = PrivacyService()
 
     def run(self, context: AgentContext) -> AgentResponse:
-        privacy_state = self.service.build_privacy_state(context)
-        access_policy = self.service.to_compatibility_access_policy(privacy_state)
+        privacy_state_obj = self.service.build_privacy_state(context)
+        privacy_state = privacy_state_obj.to_dict()
+        access_policy = self.service.to_compatibility_access_policy(privacy_state_obj)
+        privacy_report = self.service.build_privacy_report(privacy_state)
 
         context.shared["privacy"] = access_policy
-        context.shared["privacy_state"] = privacy_state.to_dict()
+        context.shared["privacy_state"] = privacy_state
+        context.shared["privacy_report"] = privacy_report
 
         summary = (
             "Privacy policy initialized for this request. "
-            f"Detected {privacy_state.summary.get('asset_count', 0)} workspace asset(s); "
-            f"{len(privacy_state.summary.get('raw_workbook_allowed_agents', []))} agent(s) may access the raw workbook, "
-            f"and {len(privacy_state.summary.get('sanitized_only_agents', []))} agent(s) are restricted to sanitized/derived context."
+            f"Detected {privacy_state['summary'].get('asset_count', 0)} workspace asset(s); "
+            f"{len(privacy_state['summary'].get('raw_workbook_allowed_agents', []))} agent(s) may access the raw workbook, "
+            f"and {len(privacy_state['summary'].get('sanitized_only_agents', []))} agent(s) are restricted to derived/sanitized context."
         )
 
         return AgentResponse(
@@ -46,6 +47,7 @@ class PrivacyGuardianAgent(BaseAgent):
             summary=summary,
             payload={
                 "access_policy": access_policy,
-                "privacy_summary": privacy_state.summary,
+                "privacy_summary": privacy_state["summary"],
+                "privacy_report": privacy_report,
             },
         )

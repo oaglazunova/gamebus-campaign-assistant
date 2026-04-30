@@ -4,6 +4,7 @@ from pathlib import Path
 
 from campaign_assistant.agents.content_fixer import ContentFixerAgent
 from campaign_assistant.orchestration.models import AgentContext
+from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 
 
 def _make_context(tmp_path: Path, *, progression_enabled: bool, ttm_enabled: bool, uses_ttm: bool) -> AgentContext:
@@ -66,6 +67,8 @@ def _make_context(tmp_path: Path, *, progression_enabled: bool, ttm_enabled: boo
 def test_content_fixer_skips_progression_proposals_when_progression_not_enabled(tmp_path: Path):
 	ctx = _make_context(tmp_path, progression_enabled=False, ttm_enabled=False, uses_ttm=False)
 
+	PrivacyGuardianAgent().run(ctx)
+
 	agent = ContentFixerAgent()
 	response = agent.run(ctx)
 
@@ -77,6 +80,8 @@ def test_content_fixer_skips_progression_proposals_when_progression_not_enabled(
 def test_content_fixer_only_emits_ttm_proposal_when_ttm_enabled(tmp_path: Path):
 	ctx = _make_context(tmp_path, progression_enabled=False, ttm_enabled=True, uses_ttm=True)
 
+	PrivacyGuardianAgent().run(ctx)
+
 	agent = ContentFixerAgent()
 	response = agent.run(ctx)
 
@@ -86,59 +91,63 @@ def test_content_fixer_only_emits_ttm_proposal_when_ttm_enabled(tmp_path: Path):
 
 
 def test_content_fixer_defers_strengthen_gatekeeping_until_roles_exist(tmp_path: Path):
-    ctx = _make_context(tmp_path, progression_enabled=True, ttm_enabled=False, uses_ttm=False)
+	ctx = _make_context(tmp_path, progression_enabled=True, ttm_enabled=False, uses_ttm=False)
 
-    ctx.shared["result"]["point_gatekeeping"]["findings"] = [
-        {
-            "challenge_name": "Challenge A",
-            "target_points": 20,
-            "theoretical_max_points": 18,
-            "explicit_gatekeepers": [],
-            "explicit_maintenance": [],
-            "inferred_gatekeepers": ["Task X"],
-            "warnings": [
-                "Reachable even without completing the effective gatekeeping task.",
-            ],
-            "suggestions": [],
-        }
-    ]
+	ctx.shared["result"]["point_gatekeeping"]["findings"] = [
+		{
+			"challenge_name": "Challenge A",
+			"target_points": 20,
+			"theoretical_max_points": 18,
+			"explicit_gatekeepers": [],
+			"explicit_maintenance": [],
+			"inferred_gatekeepers": ["Task X"],
+			"warnings": [
+				"Reachable even without completing the effective gatekeeping task.",
+			],
+			"suggestions": [],
+		}
+	]
 
-    agent = ContentFixerAgent()
-    agent.run(ctx)
+	PrivacyGuardianAgent().run(ctx)
 
-    payload = ctx.shared["fix_proposals"]
+	agent = ContentFixerAgent()
+	agent.run(ctx)
 
-    action_types = [p["action_type"] for p in payload["proposals"]]
-    assert "strengthen_gatekeeping" not in action_types
-    assert any("deferred stronger gatekeeping-point proposals" in note.lower() for note in payload["notes"])
+	payload = ctx.shared["fix_proposals"]
+
+	action_types = [p["action_type"] for p in payload["proposals"]]
+	assert "strengthen_gatekeeping" not in action_types
+	assert any("deferred stronger gatekeeping-point proposals" in note.lower() for note in payload["notes"])
 
 
 def test_content_fixer_emits_strengthen_gatekeeping_when_roles_exist(tmp_path: Path):
-    ctx = _make_context(tmp_path, progression_enabled=True, ttm_enabled=False, uses_ttm=False)
+	ctx = _make_context(tmp_path, progression_enabled=True, ttm_enabled=False, uses_ttm=False)
 
-    ctx.task_roles = [
-        {"task_id": "1", "task_name": "Walk 20 minutes", "role": "gatekeeping", "notes": ""},
-    ]
+	ctx.task_roles = [
+		{"task_id": "1", "task_name": "Walk 20 minutes", "role": "gatekeeping", "notes": ""},
+	]
 
-    ctx.shared["result"]["point_gatekeeping"]["findings"] = [
-        {
-            "challenge_name": "Challenge A",
-            "target_points": 20,
-            "theoretical_max_points": 18,
-            "explicit_gatekeepers": [],
-            "explicit_maintenance": [],
-            "inferred_gatekeepers": ["Task X"],
-            "warnings": [
-                "Reachable even without completing the effective gatekeeping task.",
-            ],
-            "suggestions": [],
-        }
-    ]
+	ctx.shared["result"]["point_gatekeeping"]["findings"] = [
+		{
+			"challenge_name": "Challenge A",
+			"target_points": 20,
+			"theoretical_max_points": 18,
+			"explicit_gatekeepers": [],
+			"explicit_maintenance": [],
+			"inferred_gatekeepers": ["Task X"],
+			"warnings": [
+				"Reachable even without completing the effective gatekeeping task.",
+			],
+			"suggestions": [],
+		}
+	]
 
-    agent = ContentFixerAgent()
-    agent.run(ctx)
+	PrivacyGuardianAgent().run(ctx)
 
-    payload = ctx.shared["fix_proposals"]
+	agent = ContentFixerAgent()
+	agent.run(ctx)
 
-    action_types = [p["action_type"] for p in payload["proposals"]]
-    assert "strengthen_gatekeeping" in action_types
+	payload = ctx.shared["fix_proposals"]
+
+	action_types = [p["action_type"] for p in payload["proposals"]]
+	assert "strengthen_gatekeeping" in action_types

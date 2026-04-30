@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from campaign_assistant.agents.theory_grounding import TheoryGroundingAgent
 from campaign_assistant.orchestration.models import AgentContext
+from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 
 
 def _make_context(tmp_path: Path) -> AgentContext:
@@ -61,6 +60,8 @@ def test_theory_agent_warns_when_ttm_and_mapping_files_are_missing(tmp_path: Pat
         }
     }
 
+    PrivacyGuardianAgent().run(ctx)
+
     agent = TheoryGroundingAgent()
     response = agent.run(ctx)
 
@@ -94,6 +95,8 @@ def test_theory_agent_surfaces_ttm_failure_from_structural_checker(tmp_path: Pat
         }
     }
 
+    PrivacyGuardianAgent().run(ctx)
+
     agent = TheoryGroundingAgent()
     response = agent.run(ctx)
 
@@ -117,6 +120,8 @@ def test_theory_agent_reports_task_role_counts(tmp_path: Path):
             "total_issues": 0,
         }
     }
+
+    PrivacyGuardianAgent().run(ctx)
 
     agent = TheoryGroundingAgent()
     response = agent.run(ctx)

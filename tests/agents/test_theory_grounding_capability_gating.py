@@ -4,6 +4,7 @@ from pathlib import Path
 
 from campaign_assistant.agents.theory_grounding import TheoryGroundingAgent
 from campaign_assistant.orchestration.models import AgentContext
+from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 
 
 def _make_context(tmp_path: Path, *, uses_ttm: bool, ttm_checks: bool) -> AgentContext:
@@ -43,6 +44,8 @@ def _make_context(tmp_path: Path, *, uses_ttm: bool, ttm_checks: bool) -> AgentC
 def test_theory_grounding_skips_when_ttm_not_enabled(tmp_path: Path):
     ctx = _make_context(tmp_path, uses_ttm=False, ttm_checks=False)
 
+    PrivacyGuardianAgent().run(ctx)
+
     agent = TheoryGroundingAgent()
     response = agent.run(ctx)
 
@@ -54,6 +57,8 @@ def test_theory_grounding_skips_when_ttm_not_enabled(tmp_path: Path):
 
 def test_theory_grounding_runs_when_ttm_enabled(tmp_path: Path):
     ctx = _make_context(tmp_path, uses_ttm=True, ttm_checks=True)
+
+    PrivacyGuardianAgent().run(ctx)
 
     agent = TheoryGroundingAgent()
     response = agent.run(ctx)

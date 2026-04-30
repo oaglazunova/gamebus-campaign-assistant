@@ -26,6 +26,7 @@ class AgentPrivacyPolicy:
     allowed_context_keys: list[str] = field(default_factory=list)
     redactions: list[str] = field(default_factory=list)
     rationale: str = ""
+    policy_source: str = "baseline"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

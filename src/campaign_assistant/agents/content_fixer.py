@@ -5,29 +5,33 @@ from pathlib import Path
 from typing import Any
 
 from campaign_assistant.agents.base import BaseAgent
-from campaign_assistant.agents.capability_utils import capability_is_true, module_is_enabled
+from campaign_assistant.agents.capability_utils import module_is_enabled
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
+from campaign_assistant.privacy import PrivacyService
 
 
 class ContentFixerAgent(BaseAgent):
     """
     Deterministic repair proposal generator.
 
-    Current scope:
-    - generate structured repair proposals from existing findings
-    - capability-aware: only propose progression/TTM-related fixes when relevant
-
-    Not yet implemented:
-    - LLM rewriting
-    - patched Excel generation directly here
-    - GameBus write-back
+    Phase 2 / Step 3:
+    - prefers a privacy-approved agent view
+    - semantic path now consumes summarized metadata rather than raw metadata_bundle
     """
 
     name = "content_fixer_agent"
 
+    def __init__(self) -> None:
+        self.privacy_service = PrivacyService()
 
-    def _resolve_uses_ttm(self, context: AgentContext, theory_grounding: dict[str, Any]) -> bool:
-        capability_summary = context.shared.get("capability_summary", {}) or {}
+    def _resolve_uses_ttm(
+        self,
+        *,
+        capability_summary: dict[str, Any],
+        theory_grounding: dict[str, Any],
+        analysis_profile: dict[str, Any],
+        selected_checks: list[str],
+    ) -> bool:
         capabilities = capability_summary.get("capabilities", {}) or {}
 
         if capabilities.get("uses_ttm") is not None:
@@ -36,72 +40,68 @@ class ContentFixerAgent(BaseAgent):
         if theory_grounding.get("uses_ttm") is not None:
             return theory_grounding.get("uses_ttm") is True
 
-        intervention_model = (context.analysis_profile or {}).get("intervention_model", {}) or {}
+        intervention_model = (analysis_profile or {}).get("intervention_model", {}) or {}
         if intervention_model.get("uses_ttm") is not None:
             return intervention_model.get("uses_ttm") is True
 
-        return "ttm" in (context.selected_checks or [])
+        return "ttm" in (selected_checks or [])
 
+    def _resolve_ttm_enabled(self, capability_summary: dict[str, Any], uses_ttm: bool) -> bool:
+        theory_applicability = capability_summary.get("theory_applicability", {}) or {}
+        if "ttm_grounding" in theory_applicability:
+            return bool(theory_applicability["ttm_grounding"])
 
-    def _resolve_ttm_enabled(self, context: AgentContext, uses_ttm: bool) -> bool:
-        capability_summary = context.shared.get("capability_summary", {}) or {}
+        validator_applicability = capability_summary.get("validator_applicability", {}) or {}
+        if "ttm" in validator_applicability:
+            return bool(validator_applicability["ttm"])
+
         active_modules = capability_summary.get("active_modules", {}) or {}
-
         if "ttm_checks" in active_modules:
             return bool(active_modules["ttm_checks"])
 
         return uses_ttm
 
+    def _resolved_task_role_counts(self, metadata_summary: dict[str, Any], fallback_task_roles: list[dict[str, Any]]) -> dict[str, int]:
+        counts = dict(metadata_summary.get("task_role_counts", {}) or {})
+        if counts:
+            return counts
 
-    def _resolved_task_roles(self, context: AgentContext) -> list[dict[str, Any]]:
-        metadata_bundle = context.shared.get("metadata_bundle")
-        if metadata_bundle is not None and getattr(metadata_bundle, "task_roles", None):
-            items = metadata_bundle.task_roles
-        else:
-            items = context.task_roles or []
-
-        rows: list[dict[str, Any]] = []
-        for item in items:
+        fallback_counts: dict[str, int] = {}
+        for item in fallback_task_roles or []:
             if isinstance(item, dict):
-                rows.append(item)
+                role = str(item.get("role", "") or "").strip().lower()
             else:
-                rows.append(
-                    {
-                        "task_id": getattr(item, "task_id", "") or "",
-                        "task_name": getattr(item, "task_name", "") or "",
-                        "role": getattr(item, "role", "") or "",
-                        "notes": getattr(item, "notes", "") or "",
-                    }
-                )
-        return rows
+                role = str(getattr(item, "role", "") or "").strip().lower()
+            if not role:
+                continue
+            fallback_counts[role] = fallback_counts.get(role, 0) + 1
+        return fallback_counts
 
-    def _has_any_task_role_annotations(self, context: AgentContext) -> bool:
-        return len(self._resolved_task_roles(context)) > 0
+    def _has_any_task_role_annotations(self, metadata_summary: dict[str, Any], fallback_task_roles: list[dict[str, Any]]) -> bool:
+        counts = self._resolved_task_role_counts(metadata_summary, fallback_task_roles)
+        return sum(counts.values()) > 0
 
-    def _is_gatekeeping_setup_complete(self, context: AgentContext) -> bool:
-        capability_summary = context.shared.get("capability_summary", {}) or {}
+    def _is_gatekeeping_setup_complete(
+        self,
+        capability_summary: dict[str, Any],
+        metadata_summary: dict[str, Any],
+        fallback_task_roles: list[dict[str, Any]],
+    ) -> bool:
         capabilities = capability_summary.get("capabilities", {}) or {}
 
         if capabilities.get("uses_progression") is False:
             return False
 
-        # If explicit task-role metadata exists, we consider setup complete enough
-        # to begin stronger gatekeeping-point reasoning.
-        if self._has_any_task_role_annotations(context):
+        if self._has_any_task_role_annotations(metadata_summary, fallback_task_roles):
             return True
 
-        # If the campaign explicitly says it uses gatekeeping but no annotations exist yet,
-        # setup is still incomplete for strong proposal generation.
         if capabilities.get("uses_gatekeeping") is True:
             return False
 
-        # Unknown or missing gatekeeping semantics -> incomplete.
         return False
 
-
-    def _role_annotation_note(self, context: AgentContext, role_kind: str, challenge_name: str | None = None) -> str:
-        profile = context.analysis_profile or {}
-        prefs = profile.get("execution_preferences", {}) or {}
+    def _role_annotation_note(self, analysis_profile: dict[str, Any], role_kind: str, challenge_name: str | None = None) -> str:
+        prefs = (analysis_profile or {}).get("execution_preferences", {}) or {}
         target = str(prefs.get("role_annotation_target", "task_roles_csv")).strip().lower()
 
         if target == "gamebus":
@@ -122,8 +122,17 @@ class ContentFixerAgent(BaseAgent):
         return base
 
     def run(self, context: AgentContext) -> AgentResponse:
-        profile = context.analysis_profile or {}
-        checking_scope = profile.get("checking_scope", {})
+        agent_view = self.privacy_service.get_required_agent_view(self.name, context)
+
+        agent_run_id = agent_view.get("agent_run_id")
+
+        analysis_profile = agent_view.get("analysis_profile", {})
+        capability_summary = agent_view.get("capability_summary", {})
+        structural_result = agent_view.get("result", {})
+        theory_grounding = agent_view.get("theory_grounding", {})
+        metadata_summary = agent_view.get("metadata_summary", {})
+
+        checking_scope = (analysis_profile or {}).get("checking_scope", {})
 
         if not checking_scope.get("content_fix_suggestions", False):
             payload = {
@@ -132,6 +141,17 @@ class ContentFixerAgent(BaseAgent):
                 "proposals": [],
             }
             context.shared["fix_proposals"] = payload
+
+            self.privacy_service.record_agent_outcome(
+                agent_name=self.name,
+                context=context,
+                agent_run_id=agent_run_id,
+                success=True,
+                payload=payload,
+                warnings=[],
+                notes=[],
+            )
+
             return AgentResponse(
                 agent_name=self.name,
                 success=True,
@@ -140,15 +160,21 @@ class ContentFixerAgent(BaseAgent):
             )
 
         progression_enabled = module_is_enabled(context, "point_gatekeeping_checks", default=True)
+        point_gatekeeping = structural_result.get("point_gatekeeping", {}) or {}
 
-        structural_result = context.shared.get("result", {})
-        point_gatekeeping = structural_result.get("point_gatekeeping", {})
-        theory_grounding = context.shared.get("theory_grounding", {})
+        uses_ttm = self._resolve_uses_ttm(
+            capability_summary=capability_summary,
+            theory_grounding=theory_grounding,
+            analysis_profile=analysis_profile,
+            selected_checks=context.selected_checks,
+        )
+        ttm_enabled = self._resolve_ttm_enabled(capability_summary, uses_ttm)
 
-        uses_ttm = self._resolve_uses_ttm(context, theory_grounding)
-        ttm_enabled = self._resolve_ttm_enabled(context, uses_ttm)
-
-        gatekeeping_setup_complete = self._is_gatekeeping_setup_complete(context)
+        gatekeeping_setup_complete = self._is_gatekeeping_setup_complete(
+            capability_summary=capability_summary,
+            metadata_summary=metadata_summary,
+            fallback_task_roles=context.task_roles,
+        )
 
         proposals: list[dict[str, Any]] = []
         notes: list[str] = []
@@ -159,7 +185,6 @@ class ContentFixerAgent(BaseAgent):
                 "until explicit annotations are added."
             )
 
-        # ---- Point/gatekeeping-driven proposals only if progression logic is relevant ----
         if progression_enabled:
             for idx, finding in enumerate(point_gatekeeping.get("findings", []), start=1):
                 challenge_name = finding.get("challenge_name") or "Unknown challenge"
@@ -167,7 +192,6 @@ class ContentFixerAgent(BaseAgent):
                 theoretical_max = finding.get("theoretical_max_points")
                 explicit_gatekeepers = finding.get("explicit_gatekeepers") or []
                 inferred_gatekeepers = finding.get("inferred_gatekeepers") or []
-
                 warnings = finding.get("warnings") or []
 
                 if any("no target points defined" in w.lower() for w in warnings):
@@ -179,9 +203,7 @@ class ContentFixerAgent(BaseAgent):
                             "severity": "high",
                             "action_type": "set_target_points",
                             "status": "proposed",
-                            "rationale": (
-                                "The challenge has no target points defined, so progression logic is incomplete."
-                            ),
+                            "rationale": "The challenge has no target points defined, so progression logic is incomplete.",
                             "suggested_change": {
                                 "target_points": theoretical_max if theoretical_max not in (None, 0) else None,
                             },
@@ -201,9 +223,7 @@ class ContentFixerAgent(BaseAgent):
                             "severity": "high",
                             "action_type": "lower_target_points",
                             "status": "proposed",
-                            "rationale": (
-                                "The current target exceeds the theoretical maximum reachable points."
-                            ),
+                            "rationale": "The current target exceeds the theoretical maximum reachable points.",
                             "suggested_change": {
                                 "current_target_points": target_points,
                                 "suggested_target_points": theoretical_max,
@@ -224,14 +244,12 @@ class ContentFixerAgent(BaseAgent):
                             "severity": "medium",
                             "action_type": "annotate_gatekeeper",
                             "status": "proposed",
-                            "rationale": (
-                                "Gatekeeping is expected for progression, but no explicit gatekeeper is marked."
-                            ),
+                            "rationale": "Gatekeeping is expected for progression, but no explicit gatekeeper is marked.",
                             "suggested_change": {
                                 "candidate_gatekeepers": inferred_gatekeepers,
                             },
                             "notes": self._role_annotation_note(
-                                context,
+                                analysis_profile,
                                 role_kind="gatekeeping",
                                 challenge_name=challenge_name,
                             ),
@@ -285,7 +303,7 @@ class ContentFixerAgent(BaseAgent):
                                 "annotation_required": True,
                             },
                             "notes": self._role_annotation_note(
-                                context,
+                                analysis_profile,
                                 role_kind="maintenance",
                                 challenge_name=challenge_name,
                             ),
@@ -296,8 +314,8 @@ class ContentFixerAgent(BaseAgent):
                 "Progression/point-gatekeeping fix proposals were skipped because this campaign does not appear to use progression logic."
             )
 
-        # ---- Theory-driven follow-up proposals only if TTM is relevant ----
-        if uses_ttm and ttm_enabled and theory_grounding.get("uses_ttm") and "ttm" in theory_grounding.get("failed_checks_seen", []):
+        if uses_ttm and ttm_enabled and theory_grounding.get("uses_ttm") and "ttm" in theory_grounding.get(
+                "failed_checks_seen", []):
             proposals.append(
                 {
                     "proposal_id": "fix-ttm-structure-review",
@@ -333,10 +351,21 @@ class ContentFixerAgent(BaseAgent):
 
         context.shared["fix_proposals"] = payload
 
-        if proposals:
-            summary = f"Content/fixer agent generated {len(proposals)} repair proposal(s)."
-        else:
-            summary = "Content/fixer agent found no concrete repair proposals to suggest."
+        self.privacy_service.record_agent_outcome(
+            agent_name=self.name,
+            context=context,
+            agent_run_id=agent_run_id,
+            success=True,
+            payload=payload,
+            warnings=[],
+            notes=notes,
+        )
+
+        summary = (
+            f"Content/fixer agent generated {len(proposals)} repair proposal(s)."
+            if proposals
+            else "Content/fixer agent found no concrete repair proposals to suggest."
+        )
 
         return AgentResponse(
             agent_name=self.name,
@@ -344,6 +373,7 @@ class ContentFixerAgent(BaseAgent):
             summary=summary,
             payload=payload,
         )
+
 
     def _target_to_require_gatekeeper(self, finding: dict[str, Any]) -> float | None:
         target = finding.get("target_points")

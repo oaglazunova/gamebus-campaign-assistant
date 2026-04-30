@@ -3,6 +3,7 @@ from campaign_assistant.privacy.models import (
     PrivacyAsset,
     PrivacyState,
 )
+from campaign_assistant.privacy.presentation import build_privacy_diagnostics_model
 from campaign_assistant.privacy.service import PrivacyService
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "AgentPrivacyPolicy",
     "PrivacyState",
     "PrivacyService",
+    "build_privacy_diagnostics_model",
 ]

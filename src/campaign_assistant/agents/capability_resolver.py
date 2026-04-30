@@ -3,6 +3,7 @@ from __future__ import annotations
 from campaign_assistant.agents.base import BaseAgent
 from campaign_assistant.metadata import load_merged_metadata_bundle
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse
+from campaign_assistant.privacy import PrivacyService
 
 
 def _theory_tags(metadata_bundle) -> list[str]:
@@ -64,7 +65,17 @@ def _build_active_modules_compatibility(
 class CapabilityResolverAgent(BaseAgent):
     name = "capability_resolver_agent"
 
+    def __init__(self) -> None:
+        self.privacy_service = PrivacyService()
+
     def run(self, context: AgentContext) -> AgentResponse:
+        run_info = (
+            self.privacy_service.start_agent_run(self.name, context)
+            if "privacy_state" in context.shared
+            else {}
+        )
+        agent_run_id = run_info.get("agent_run_id")
+
         metadata_bundle = load_merged_metadata_bundle(
             file_path=context.file_path,
             workspace_root=context.workspace_root,
@@ -117,6 +128,16 @@ class CapabilityResolverAgent(BaseAgent):
             lines.append(f"Loaded {len(metadata_bundle.task_roles)} task-role annotation(s).")
         if metadata_bundle.theory_sources:
             lines.append(f"Loaded {len(metadata_bundle.theory_sources)} theory/evidence source(s).")
+
+        self.privacy_service.record_agent_outcome(
+            agent_name=self.name,
+            context=context,
+            agent_run_id=agent_run_id,
+            success=True,
+            payload=summary,
+            warnings=[],
+            notes=list(metadata_bundle.notes or []) + list(metadata_bundle.missing or []),
+        )
 
         return AgentResponse(
             agent_name=self.name,

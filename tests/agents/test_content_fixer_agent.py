@@ -5,6 +5,7 @@ from pathlib import Path
 
 from campaign_assistant.agents.content_fixer import ContentFixerAgent
 from campaign_assistant.orchestration.models import AgentContext
+from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 
 
 def _make_context(tmp_path: Path) -> AgentContext:
@@ -60,6 +61,8 @@ def test_content_fixer_generates_proposals_from_point_gatekeeping_findings(tmp_p
 		"failed_checks_seen": [],
 	}
 
+	PrivacyGuardianAgent().run(ctx)
+
 	agent = ContentFixerAgent()
 	response = agent.run(ctx)
 
@@ -81,6 +84,8 @@ def test_content_fixer_adds_manual_ttm_review_when_ttm_failed(tmp_path: Path):
 		"uses_ttm": True,
 		"failed_checks_seen": ["ttm"],
 	}
+
+	PrivacyGuardianAgent().run(ctx)
 
 	agent = ContentFixerAgent()
 	response = agent.run(ctx)
@@ -113,6 +118,8 @@ def test_content_fixer_persists_proposals_to_workspace(tmp_path: Path):
 		"uses_ttm": False,
 		"failed_checks_seen": [],
 	}
+
+	PrivacyGuardianAgent().run(ctx)
 
 	agent = ContentFixerAgent()
 	response = agent.run(ctx)
@@ -156,6 +163,8 @@ def test_content_fixer_uses_configurable_role_annotation_target(tmp_path: Path):
 		"failed_checks_seen": [],
 	}
 
+	PrivacyGuardianAgent().run(ctx)
+
 	agent = ContentFixerAgent()
 	agent.run(ctx)
 
@@ -167,39 +176,41 @@ def test_content_fixer_uses_configurable_role_annotation_target(tmp_path: Path):
 	assert "task_roles.csv" in gatekeeper_proposal["notes"]
 
 def test_content_fixer_uses_gamebus_role_annotation_target_when_configured(tmp_path: Path):
-    ctx = _make_context(tmp_path)
-    ctx.analysis_profile["execution_preferences"] = {
-        "role_annotation_target": "gamebus"
-    }
-    ctx.shared["result"] = {
-        "point_gatekeeping": {
-            "findings": [
-                {
-                    "challenge_name": "Challenge A",
-                    "target_points": 20,
-                    "theoretical_max_points": 18,
-                    "explicit_gatekeepers": [],
-                    "explicit_maintenance": [],
-                    "inferred_gatekeepers": ["Task X"],
-                    "warnings": [
-                        "No explicit gatekeeping task is marked for this challenge.",
-                    ],
-                    "suggestions": [],
-                }
-            ]
-        }
-    }
-    ctx.shared["theory_grounding"] = {
-        "uses_ttm": False,
-        "failed_checks_seen": [],
-    }
+	ctx = _make_context(tmp_path)
+	ctx.analysis_profile["execution_preferences"] = {
+		"role_annotation_target": "gamebus"
+	}
+	ctx.shared["result"] = {
+		"point_gatekeeping": {
+			"findings": [
+				{
+					"challenge_name": "Challenge A",
+					"target_points": 20,
+					"theoretical_max_points": 18,
+					"explicit_gatekeepers": [],
+					"explicit_maintenance": [],
+					"inferred_gatekeepers": ["Task X"],
+					"warnings": [
+						"No explicit gatekeeping task is marked for this challenge.",
+					],
+					"suggestions": [],
+				}
+			]
+		}
+	}
+	ctx.shared["theory_grounding"] = {
+		"uses_ttm": False,
+		"failed_checks_seen": [],
+	}
 
-    agent = ContentFixerAgent()
-    agent.run(ctx)
+	PrivacyGuardianAgent().run(ctx)
 
-    proposals = ctx.shared["fix_proposals"]["proposals"]
-    gatekeeper_proposal = next(
-        p for p in proposals if p["action_type"] == "annotate_gatekeeper"
-    )
+	agent = ContentFixerAgent()
+	agent.run(ctx)
 
-    assert "GameBus" in gatekeeper_proposal["notes"]
+	proposals = ctx.shared["fix_proposals"]["proposals"]
+	gatekeeper_proposal = next(
+		p for p in proposals if p["action_type"] == "annotate_gatekeeper"
+	)
+
+	assert "GameBus" in gatekeeper_proposal["notes"]
