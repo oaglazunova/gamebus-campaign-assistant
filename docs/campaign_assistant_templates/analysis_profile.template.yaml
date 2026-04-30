@@ -1,0 +1,79 @@
+# analysis_profile.template.yaml
+# Workspace-level profile for how the assistant should analyze a campaign.
+# Copy this file into a campaign workspace and rename it to analysis_profile.yaml
+# or use it as the starting point for your workspace profile.
+
+version: 1
+
+campaign:
+  id: "example-campaign-id"
+  name: "Example campaign"
+  description: "Optional human-readable description."
+  source_file: "campaign.xlsx"
+
+intervention_model:
+  # Set to true/false where known. Leave null if unknown or not yet decided.
+  uses_ttm: true
+  uses_progression: true
+  uses_gatekeeping: true
+  uses_maintenance_tasks: true
+  uses_wave_specific_logic: true
+  uses_group_specific_logic: true
+  uses_bct_mapping: false
+  uses_comb_mapping: false
+
+checking_scope:
+  # Deterministic checks
+  structural_checks: true
+  point_gatekeeping_checks: true
+  secrets_checks: true
+  ttm_checks: true
+
+  # Assistant behavior
+  content_fix_suggestions: true
+  semantic_theory_review: true
+  subgroup_review: true
+
+point_logic:
+  point_rules_file: "point_rules.yaml"
+
+gatekeeping_policy:
+  # How should gatekeeping be interpreted for this campaign?
+  # Options are illustrative; adapt to your workflow.
+  mode: "explicit"   # explicit | inferred | none | mixed
+  require_at_least_one_gatekeeping_task_per_progression_challenge: true
+  require_maintenance_annotations_for_relapse_logic: true
+  allow_inference_when_annotations_missing: false
+
+subgroup_logic:
+  subgroup_context_file: "subgroup_context.yaml"
+  review_by:
+    - age_group
+    - country
+    - treatment_group
+    - wave
+  default_scope: "whole_campaign"   # whole_campaign | active_waves_only
+
+theory_inputs:
+  ttm_structure_file: "evidence/theory/ttm_structure.pdf"
+  intervention_mapping_file: "evidence/theory/intervention_mapping.xlsx"
+  workshop_constraints_file: "workshop_constraints.yaml"
+
+privacy:
+  # Advisory settings for the assistant/agents.
+  redact_user_identifiers_before_llm: true
+  redact_sensitive_free_text_before_llm: true
+  store_agent_access_log: true
+  require_request_id_trace: true
+
+execution_preferences:
+  # Where role annotations currently live before/if GameBus supports them natively.
+  role_annotation_target: "task_roles_csv"  # task_roles_csv | gamebus | either
+  proposal_review_mode: "human_approval_required"
+  auto_apply_changes: false
+  generate_patched_excel_draft: true
+  generate_task_roles_draft: true
+
+notes:
+  - "This profile is campaign-specific."
+  - "Set fields to null when the campaign does not yet have explicit metadata."

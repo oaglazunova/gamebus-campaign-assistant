@@ -5,7 +5,7 @@
 .streamlit/
 outputs/
 *.log
-samples/
+_samples/
 logs/
 uploads/
 

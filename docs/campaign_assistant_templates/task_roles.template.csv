@@ -1,0 +1,5 @@
+task_id,task_name,role,challenge_name,wave_id,group_id,notes
+T001,Example task A,gatekeeping,Example challenge,W1,older_adults,"Primary task required for progression"
+T002,Example task B,maintenance,Example challenge,W1,older_adults,"Repeated in relapse/at-risk logic"
+T003,Example task C,transition,Example challenge,W1,older_adults,"Introduces the next level or stage"
+T004,Example task D,supporting,Example challenge,W1,older_adults,"Supports the challenge but should not determine progression"
