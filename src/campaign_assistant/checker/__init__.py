@@ -1,5 +1,6 @@
 from campaign_assistant.checker.explainers import explain_ttm, summarize_result
 from campaign_assistant.checker.schema import (
+    ALL_CHECKS,
     CAPABILITY_GATED_CHECKS,
     CONSISTENCY,
     DEFAULT_CHECKS,
@@ -26,6 +27,7 @@ def export_issues_to_excel(*args, **kwargs):
 
 
 __all__ = [
+    "ALL_CHECKS",
     "CONSISTENCY",
     "DEFAULT_CHECKS",
     "FRIENDLY_CHECK_NAMES",

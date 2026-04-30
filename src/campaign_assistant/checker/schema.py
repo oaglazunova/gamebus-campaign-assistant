@@ -28,10 +28,15 @@ FAMILY_SPECIFIC_CHECKS = [
     TTMSTRUCTURE,
 ]
 
-# Default checks exposed in the UI / app flow
+# Checks shown/used in the normal app flow
 DEFAULT_CHECKS = [
     *UNIVERSAL_CHECKS,
     *CAPABILITY_GATED_CHECKS,
+]
+
+# Complete list including legacy/family-specific checks kept for reference
+ALL_CHECKS = [
+    *DEFAULT_CHECKS,
     *FAMILY_SPECIFIC_CHECKS,
 ]
 
