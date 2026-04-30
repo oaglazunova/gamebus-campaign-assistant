@@ -108,6 +108,106 @@ def build_issue_markdown_list(
 	return "\n\n".join(blocks) + tail
 
 
+
+def _top_priority_issues_markdown(result: Dict[str, Any], max_items: int = 5) -> str:
+	prioritized = result.get("prioritized_issues", []) or []
+	if not prioritized:
+		return "No prioritized issues are available."
+
+	top = prioritized[:max_items]
+	single_check_selected = _selected_single_check(result)
+
+	text = build_issue_markdown_list(
+		top,
+		single_check_selected=single_check_selected,
+		max_items=max_items,
+	)
+
+	if len(prioritized) > len(top):
+		text += f"\n\n…and **{len(prioritized) - len(top)} more** prioritized issue(s)."
+
+	return text
+
+
+def _check_summary_rows(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+	issues_by_check = result.get("issues_by_check", {}) or {}
+	summary = result.get("summary", {}) or {}
+	issue_count_by_check = summary.get("issue_count_by_check", {}) or {}
+	failed_checks = set(summary.get("failed_checks", []) or [])
+	errored_checks = set(summary.get("errored_checks", []) or [])
+
+	rows: List[Dict[str, Any]] = []
+
+	for check_name, friendly_name in FRIENDLY_CHECK_NAMES.items():
+		issues = issues_by_check.get(check_name, []) or []
+		count = int(issue_count_by_check.get(check_name, len(issues)) or 0)
+
+		if check_name in errored_checks:
+			status = "Errored"
+		elif check_name in failed_checks:
+			status = "Failed"
+		elif count > 0:
+			status = "Failed"
+		else:
+			status = "Passed"
+
+		active_count = sum(1 for issue in issues if issue.get("active_wave"))
+		high_count = sum(1 for issue in issues if issue.get("severity") == "high")
+		medium_count = sum(1 for issue in issues if issue.get("severity") == "medium")
+		low_count = sum(1 for issue in issues if issue.get("severity") == "low")
+
+		if status == "Passed" and count == 0:
+			continue
+
+		rows.append(
+			{
+				"check": check_name,
+				"label": friendly_name,
+				"status": status,
+				"issues": count,
+				"active_wave": active_count,
+				"high": high_count,
+				"medium": medium_count,
+				"low": low_count,
+			}
+		)
+
+	return rows
+
+
+def render_findings_overview_panel(result: Dict[str, Any]) -> None:
+	summary = result.get("summary", {}) or {}
+	total_issues = int(summary.get("total_issues", 0) or 0)
+	failed_checks = list(summary.get("failed_checks", []) or [])
+	errored_checks = list(summary.get("errored_checks", []) or [])
+
+	st.subheader("Findings overview")
+
+	c1, c2, c3 = st.columns(3)
+	c1.metric("Total issues", total_issues)
+	c2.metric("Failed checks", len(failed_checks))
+	c3.metric("Errored checks", len(errored_checks))
+
+	if total_issues == 0 and not errored_checks:
+		st.success("No structural issues were found in the currently selected checks.")
+		return
+
+	if errored_checks:
+		st.warning(
+			"Some checks errored. Review those first, because they may hide additional problems."
+		)
+
+	st.markdown("**Top priorities**")
+	st.markdown(_top_priority_issues_markdown(result, max_items=5))
+
+	rows = _check_summary_rows(result)
+	if rows:
+		st.markdown("**Checks with findings**")
+		df = pd.DataFrame(rows)
+		st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+
 def _format_point_finding(finding: Dict[str, Any]) -> str:
 	lines = []
 	challenge = finding.get("challenge_name") or "Unknown challenge"
@@ -333,6 +433,62 @@ def _build_task_roles_draft_markdown(result: Dict[str, Any]) -> str:
 
 
 
+def build_assistant_guide_model(result: Dict[str, Any]) -> Dict[str, Any]:
+	summary = result.get("summary", {}) or {}
+	assistant_meta = result.get("assistant_meta", {}) or {}
+	readiness = assistant_meta.get("workspace_readiness", {}) or {}
+	fix_proposals = result.get("fix_proposals", {}) or {}
+
+	total_issues = int(summary.get("total_issues", 0) or 0)
+	proposal_count = int(fix_proposals.get("proposal_count", 0) or 0)
+
+	suggestions: List[str] = []
+
+	suggestions.append("Summarize the issues")
+
+	if total_issues > 0:
+		suggestions.append("What should I fix first?")
+
+	if readiness and not readiness.get("gatekeeping_semantics_ready", True):
+		suggestions.append("What setup is missing?")
+
+	if proposal_count > 0:
+		suggestions.append("Show fix proposals")
+
+	if result.get("theory_grounding"):
+		suggestions.append("Show theory grounding")
+
+	if result.get("point_gatekeeping"):
+		suggestions.append("Show point/gatekeeping findings")
+
+	return {
+		"total_issues": total_issues,
+		"proposal_count": proposal_count,
+		"suggestions": suggestions,
+	}
+
+
+def render_assistant_guide_panel(result: Dict[str, Any]) -> None:
+	if not result:
+		return
+
+	model = build_assistant_guide_model(result)
+	suggestions = model["suggestions"]
+
+	if not suggestions:
+		return
+
+	st.subheader("Assistant")
+	st.caption("Suggested questions based on the current analysis")
+
+	cols = st.columns(min(len(suggestions), 3))
+	for idx, suggestion in enumerate(suggestions):
+		with cols[idx % len(cols)]:
+			if st.button(suggestion, key=f"assistant-suggestion-{idx}"):
+				st.session_state["assistant_prefill_prompt"] = suggestion
+
+
+
 def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 	q = user_question.strip().lower()
 
@@ -444,12 +600,35 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 	if any(x in q for x in ["task role draft", "role draft", "gatekeeper draft", "task_roles draft"]):
 		return _build_task_roles_draft_markdown(result)
 
-	if any(x in q for x in ["setup", "metadata", "missing metadata", "campaign setup hints"]):
-		hints = result.get("assistant_meta", {}).get("campaign_setup_hints", [])
-		if not hints:
+	if any(x in q for x in ["setup", "metadata", "missing metadata", "campaign setup hints", "what setup is missing"]):
+		hints = result.get("assistant_meta", {}).get("campaign_setup_hints", []) or []
+		readiness = result.get("assistant_meta", {}).get("workspace_readiness", {}) or []
+
+		lines = []
+
+		if hints:
+			lines.append("Here are the current recommended campaign setup steps:")
+			lines.extend([f"- {h}" for h in hints])
+
+		if isinstance(readiness, dict):
+			reasons = readiness.get("reasons", []) or []
+			actions = readiness.get("actions", []) or []
+
+			if reasons:
+				if lines:
+					lines.append("")
+				lines.append("Workspace readiness notes:")
+				lines.extend([f"- {r}" for r in reasons])
+
+			if actions:
+				if lines:
+					lines.append("")
+				lines.append("Suggested next actions:")
+				lines.extend([f"- {a.get('label', 'Open related setup')}" for a in actions])
+
+		if not lines:
 			return "There are currently no specific campaign setup hints."
-		lines = ["Here are the current recommended campaign setup steps:"]
-		lines.extend([f"- {h}" for h in hints])
+
 		return "\n".join(lines)
 
 	for check_name, friendly_name in FRIENDLY_CHECK_NAMES.items():
@@ -474,16 +653,15 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 			return "\n\n".join(lines)
 
 	return (
-		"I can help with things like:\n\n"
+		"I can help you with the current workflow. Try one of these:\n\n"
 		"- `Summarize the issues`\n"
+		"- `What should I fix first?`\n"
 		"- `Which checks failed?`\n"
-		"- `Show TTM issues`\n"
+		"- `What setup is missing?`\n"
 		"- `Show point/gatekeeping findings`\n"
 		"- `Show theory grounding`\n"
 		"- `Show fix proposals`\n"
 		"- `What did the agents do?`\n"
-		"- `What should I fix first?`\n"
-		"- `Explain TTM`\n"
 	)
 
 
@@ -493,7 +671,7 @@ def render_issues_panel(result: Dict[str, Any]) -> None:
 	issue_count_by_check = summary.get("issue_count_by_check", {})
 	single_check_selected = _selected_single_check(result)
 
-	st.subheader("Issues by check type")
+	st.subheader("Detailed issues")
 
 	non_empty_checks = [
 		check_name
@@ -519,76 +697,189 @@ def render_issues_panel(result: Dict[str, Any]) -> None:
 			)
 
 
+
+def build_capability_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
+	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {}) or {}
+	capabilities = capability_summary.get("capabilities", {}) or {}
+	active_modules = capability_summary.get("active_modules", {}) or {}
+	task_role_count = int(capability_summary.get("task_role_count", 0) or 0)
+	setup_hints = result.get("assistant_meta", {}).get("campaign_setup_hints", []) or []
+
+	return {
+		"has_capability_summary": bool(capability_summary),
+		"uses_progression": capabilities.get("uses_progression"),
+		"uses_gatekeeping": capabilities.get("uses_gatekeeping"),
+		"uses_ttm": capabilities.get("uses_ttm"),
+		"task_role_count": task_role_count,
+		"active_modules": active_modules,
+		"setup_hints": setup_hints,
+		"notes": capability_summary.get("notes", []) or [],
+		"missing": capability_summary.get("missing", []) or [],
+		"sources": capability_summary.get("sources", {}) or {},
+		"capabilities": capabilities,
+	}
+
+
+def build_theory_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
+	theory = result.get("theory_grounding", {}) or {}
+	if not theory:
+		return {
+			"has_theory": False,
+			"status": "empty",
+			"confidence": "unknown",
+			"uses_ttm": False,
+			"summary_message": "No theory-grounding output is available.",
+			"details": {},
+		}
+
+	applicability = theory.get("applicability", {}) or {}
+	status = applicability.get("status")
+	reason = applicability.get("reason", "")
+
+	if status == "not_applicable":
+		summary_message = f"Theory grounding is not active for this campaign. {reason}".strip()
+		ui_status = "not_applicable"
+	elif status == "uncertain":
+		summary_message = f"Theory grounding may be incomplete. {reason}".strip()
+		ui_status = "uncertain"
+	elif theory.get("confidence") == "not_applicable":
+		summary_message = "Theory grounding is not active for this campaign."
+		ui_status = "not_applicable"
+	else:
+		confidence = theory.get("confidence", "unknown")
+		summary_message = f"Theory grounding is active with **{confidence}** confidence."
+		ui_status = "active"
+
+	return {
+		"has_theory": True,
+		"status": ui_status,
+		"confidence": theory.get("confidence", "unknown"),
+		"uses_ttm": bool(theory.get("uses_ttm", False)),
+		"summary_message": summary_message,
+		"details": theory,
+	}
+
+
+def build_point_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
+	pg = result.get("point_gatekeeping", {}) or {}
+	if not pg:
+		return {
+			"has_point_analysis": False,
+			"status": "empty",
+			"summary_message": "No point/gatekeeping analysis is available.",
+			"summary": {},
+			"warnings": [],
+			"suggestions": [],
+		}
+
+	applicability = pg.get("applicability", {}) or {}
+	status = applicability.get("status")
+	reason = applicability.get("reason", "")
+	pg_summary = pg.get("summary", {}) or {}
+
+	if status == "not_applicable":
+		summary_message = f"Point/gatekeeping reasoning is not active for this campaign. {reason}".strip()
+		ui_status = "not_applicable"
+	elif status == "uncertain":
+		summary_message = f"Point/gatekeeping results are only partially interpretable. {reason}".strip()
+		ui_status = "uncertain"
+	elif status == "partial":
+		summary_message = f"Point/gatekeeping reasoning is active but incomplete. {reason}".strip()
+		ui_status = "partial"
+	else:
+		summary_message = (
+			f"Point/gatekeeping reasoning produced **{pg_summary.get('challenge_findings', 0)}** "
+			f"challenge-level finding(s)."
+		)
+		ui_status = "active"
+
+	return {
+		"has_point_analysis": True,
+		"status": ui_status,
+		"summary_message": summary_message,
+		"summary": pg_summary,
+		"warnings": pg.get("warnings", []) or [],
+		"suggestions": pg.get("suggestions", []) or [],
+		"details": pg,
+	}
+
+
 def render_capability_panel(result: Dict[str, Any]) -> None:
-	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {})
-	if not capability_summary:
+	model = build_capability_status_model(result)
+	if not model["has_capability_summary"]:
 		return
 
 	st.subheader("Campaign capability summary")
 
-	capabilities = capability_summary.get("capabilities", {})
-	active_modules = capability_summary.get("active_modules", {})
-	sources = capability_summary.get("sources", {})
-	notes = capability_summary.get("notes", [])
-	missing = capability_summary.get("missing", [])
-	task_role_count = capability_summary.get("task_role_count", 0)
-	setup_hints = result.get("assistant_meta", {}).get("campaign_setup_hints", [])
+	uses_progression = model["uses_progression"]
+	uses_gatekeeping = model["uses_gatekeeping"]
+	uses_ttm = model["uses_ttm"]
+	task_role_count = model["task_role_count"]
+
+	if uses_progression is False:
+		st.info("This campaign is currently interpreted as not using progression-specific logic.")
+	elif uses_progression is True and task_role_count == 0:
+		st.warning("This campaign appears to use progression, but no task-role annotations are currently available.")
+	else:
+		st.info("Capability resolution completed. The workspace profile is available below.")
 
 	c1, c2, c3, c4 = st.columns(4)
 	c1.metric("Task-role annotations", task_role_count)
-	c2.metric("Progression", str(capabilities.get("uses_progression")))
-	c3.metric("Gatekeeping", str(capabilities.get("uses_gatekeeping")))
-	c4.metric("TTM", str(capabilities.get("uses_ttm")))
+	c2.metric("Progression", str(uses_progression))
+	c3.metric("Gatekeeping", str(uses_gatekeeping))
+	c4.metric("TTM", str(uses_ttm))
+
+	setup_hints = model["setup_hints"]
+	if setup_hints:
+		with st.expander("Recommended setup steps", expanded=False):
+			for hint in setup_hints:
+				st.markdown(f"- {hint}")
 
 	with st.expander("Resolved capabilities", expanded=False):
+		capabilities = model["capabilities"]
+		sources = model["sources"]
 		for key, value in capabilities.items():
 			source = sources.get(key, "unknown")
 			st.markdown(f"- **{key}**: `{value}` _(source: {source})_")
 
 	with st.expander("Active reasoning modules", expanded=False):
-		for key, value in active_modules.items():
+		for key, value in model["active_modules"].items():
 			st.markdown(f"- **{key}**: `{value}`")
 
-	if setup_hints:
-		with st.expander("Recommended campaign setup steps", expanded=False):
-			for hint in setup_hints:
-				st.markdown(f"- {hint}")
-
-	if notes:
+	if model["notes"]:
 		with st.expander("Metadata notes", expanded=False):
-			for note in notes:
+			for note in model["notes"]:
 				st.markdown(f"- {note}")
 
-	if missing:
+	if model["missing"]:
 		with st.expander("Missing / uncertain metadata", expanded=False):
-			for item in missing:
+			for item in model["missing"]:
 				st.markdown(f"- {item}")
 
 
 def render_theory_panel(result: Dict[str, Any]) -> None:
-	theory = result.get("theory_grounding", {})
-	if not theory:
+	model = build_theory_status_model(result)
+	if not model["has_theory"]:
 		return
 
 	st.subheader("Theory grounding")
 
-	applicability = theory.get("applicability", {})
-	status = applicability.get("status")
-	reason = applicability.get("reason", "")
+	if model["status"] == "not_applicable":
+		st.info(model["summary_message"])
+	elif model["status"] == "uncertain":
+		st.warning(model["summary_message"])
+	else:
+		st.info(model["summary_message"])
 
-	if status == "not_applicable":
-		st.info(f"Theory grounding is not active for this campaign. {reason}")
+	theory = model["details"]
+
+	c1, c2, c3 = st.columns(3)
+	c1.metric("Confidence", str(model["confidence"]))
+	c2.metric("Uses TTM", str(model["uses_ttm"]))
+	c3.metric("TTM structure file", str(theory.get("ttm_structure_file_exists", False)))
+
+	with st.expander("Theory details", expanded=False):
 		st.markdown(_build_theory_summary_markdown(result))
-		return
-	elif status == "uncertain":
-		st.warning(f"Theory grounding may be incomplete. {reason}")
-
-	if theory.get("confidence") == "not_applicable":
-		st.info("Theory grounding is not active for this campaign.")
-		st.markdown(_build_theory_summary_markdown(result))
-		return
-
-	st.markdown(_build_theory_summary_markdown(result))
 
 	stage_notes = theory.get("stage_notes") or {}
 	if stage_notes:
@@ -598,37 +889,21 @@ def render_theory_panel(result: Dict[str, Any]) -> None:
 
 
 def render_point_gatekeeping_panel(result: Dict[str, Any]) -> None:
-	pg = result.get("point_gatekeeping", {})
-	if not pg:
+	model = build_point_status_model(result)
+	if not model["has_point_analysis"]:
 		return
 
 	st.subheader("Point & gatekeeping findings")
 
-	applicability = pg.get("applicability", {})
-	status = applicability.get("status")
-	reason = applicability.get("reason", "")
-
-	if status == "not_applicable":
-		st.info(f"Point/gatekeeping reasoning is not active for this campaign. {reason}")
+	if model["status"] == "not_applicable":
+		st.info(model["summary_message"])
 		return
-	elif status == "uncertain":
-		st.warning(f"Point/gatekeeping results are only partially interpretable. {reason}")
-	elif status == "partial":
-		st.warning(f"Point/gatekeeping reasoning is active but incomplete. {reason}")
+	elif model["status"] in {"uncertain", "partial"}:
+		st.warning(model["summary_message"])
+	else:
+		st.info(model["summary_message"])
 
-	st.info(
-		"**Recommended workflow for point fixing**\n\n"
-		"1. First make the intended progression logic explicit: identify gatekeeping task(s), "
-		"and where relevant maintenance task(s).\n"
-		"2. Then review point logic: missing targets, unreachable targets, and whether progression "
-		"is possible without the gatekeeping task(s).\n"
-		"3. After role annotations are accepted and saved, regenerate proposals because additional "
-		"point issues may become visible.\n\n"
-		"This workflow reflects the current long-term-trial style campaigns. "
-		"Other GameBus campaigns may use different progression logic."
-	)
-
-	pg_summary = pg.get("summary", {})
+	pg_summary = model["summary"]
 	c1, c2, c3, c4, c5 = st.columns(5)
 	c1.metric("Findings", pg_summary.get("challenge_findings", 0))
 	c2.metric("Missing targets", pg_summary.get("missing_targets", 0))
@@ -636,14 +911,27 @@ def render_point_gatekeeping_panel(result: Dict[str, Any]) -> None:
 	c4.metric("Gatekeeper warnings", pg_summary.get("gatekeeper_warnings", 0))
 	c5.metric("Maintenance warnings", pg_summary.get("maintenance_warnings", 0))
 
-	if pg.get("warnings"):
-		for warning in pg["warnings"]:
-			st.warning(warning)
+	if model["warnings"]:
+		with st.expander("Warnings", expanded=False):
+			for warning in model["warnings"]:
+				st.warning(warning)
 
-	if pg.get("suggestions"):
+	if model["suggestions"]:
 		with st.expander("Suggested follow-up actions", expanded=False):
-			for suggestion in pg["suggestions"]:
+			for suggestion in model["suggestions"]:
 				st.markdown(f"- {suggestion}")
+
+	with st.expander("Recommended workflow", expanded=False):
+		st.markdown(
+			"1. First make the intended progression logic explicit: identify gatekeeping task(s), "
+			"and where relevant maintenance task(s).\n\n"
+			"2. Then review point logic: missing targets, unreachable targets, and whether progression "
+			"is possible without the gatekeeping task(s).\n\n"
+			"3. After role annotations are accepted and saved, regenerate proposals because additional "
+			"point issues may become visible.\n\n"
+			"This workflow reflects the current long-term-trial style campaigns. "
+			"Other GameBus campaigns may use different progression logic."
+		)
 
 
 def _severity_explainer_markdown() -> str:
@@ -793,493 +1081,532 @@ def _group_setup_actions(group: Dict[str, Any]) -> list[tuple[str, str]]:
 	return deduped
 
 
+def _count_fix_proposals_by_status(proposals: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts: Dict[str, int] = {
+        "proposed": 0,
+        "accepted": 0,
+        "rejected": 0,
+    }
+
+    for proposal in proposals:
+        status = str(proposal.get("status", "proposed") or "proposed")
+        counts[status] = counts.get(status, 0) + 1
+
+    return counts
+
+
+def _proposal_group_table_rows(groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+
+    for g in groups:
+        rows.append(
+            {
+                "group_id": g.get("group_id"),
+                "summary": g.get("summary"),
+                "issue_family": g.get("issue_label"),
+                "category": g.get("category"),
+                "severity": g.get("severity"),
+                "priority": g.get("priority", "normal"),
+                "member_count": g.get("member_count", 0),
+                "status": g.get("status", "proposed"),
+            }
+        )
+
+    return rows
+
+
+def _priority_group_count(groups: List[Dict[str, Any]]) -> int:
+    return sum(1 for g in groups if str(g.get("priority", "normal")) != "normal")
+
+
 def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
-	fixer = result.get("fix_proposals", {})
-	if not fixer:
-		return
-
-	st.subheader("Fix proposals")
-
-	raw_count = fixer.get("proposal_count", 0)
-	st.markdown(f"Generated **{raw_count}** structured fix proposal(s).")
-
-	path = fixer.get("proposals_path")
-	if path:
-		st.caption(f"Saved proposal artifact: {path}")
-
-	proposals = fixer.get("proposals", [])
-	if not proposals:
-		st.info("No concrete repair proposals were generated for this run.")
-		return
-
-	assistant_meta = result.get("assistant_meta", {})
-	workspace_root = assistant_meta.get("workspace_root")
-	workspace_id = assistant_meta.get("workspace_id")
-	request_id = assistant_meta.get("request_id")
-	snapshot_path = assistant_meta.get("snapshot_path")
-
-	handler = None
-	if workspace_root and request_id:
-		handler = ApprovalHandler(workspace_root=workspace_root, request_id=request_id)
-		proposals = handler.merge_statuses(proposals)
-		result["fix_proposals"]["proposals"] = proposals
-
-	capability_summary = result.get("assistant_meta", {}).get("capability_summary", {}) or {}
-	proposal_groups = build_proposal_groups(proposals)
-	proposal_groups = annotate_proposal_groups_with_context(proposal_groups, capability_summary)
-
-	with st.expander("Proposal review", expanded=False):
-		all_statuses = ["proposed", "accepted", "rejected", "mixed"]
-
-		col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns([2, 2, 3, 2, 2])
-
-		with col_f1:
-			status_filter = st.multiselect(
-				"Statuses",
-				options=all_statuses,
-				default=all_statuses,
-				key=f"proposal-status-filter-{request_id}",
-			)
-		with col_f2:
-			page_size = st.selectbox(
-				"Rows per page",
-				options=[25, 50, 100],
-				index=1,
-				key=f"proposal-page-size-{request_id}",
-			)
-		with col_f3:
-			search = st.text_input(
-				"Search proposal/challenge/action",
-				key=f"proposal-search-{request_id}",
-			).strip().lower()
-
-		with col_f4:
-			focus_filter = st.selectbox(
-				"Focus",
-				options=[
-					"All",
-					"Recommended now",
-					"Gatekeeping setup",
-					"Maintenance setup",
-					"Point fixes",
-					"TTM review",
-				],
-				key=f"proposal-focus-filter-{request_id}",
-			)
-
-		with col_f5:
-			with st.popover("ℹ️ Severity"):
-				st.markdown(_severity_explainer_markdown())
-
-		filtered_groups = []
-		for group in proposal_groups:
-			if group.get("status", "proposed") not in status_filter:
-				continue
-
-			if not matches_group_focus(group, focus_filter):
-				continue
-
-			if search:
-				haystack = " ".join(
-					str(group.get(k, "") or "")
-					for k in [
-						"group_id",
-						"summary",
-						"issue_family",
-						"issue_label",
-						"category",
-						"severity",
-						"priority",
-						"priority_reason",
-						"context_tags",
-					]
-				).lower()
-				if search not in haystack:
-					continue
-
-			filtered_groups.append(group)
-
-		group_count = len(proposal_groups)
-		filtered_raw_count = len(_proposal_ids_from_groups(filtered_groups))
-
-		st.caption(
-			f"Showing grouped review: **{group_count} groups** representing **{raw_count} raw proposals**. "
-			f"Current filter covers **{len(filtered_groups)} groups / {filtered_raw_count} proposals**."
-		)
-
-		if not filtered_groups:
-			st.info("No proposal groups match the current filters.")
-		else:
-			total_pages = max(1, math.ceil(len(filtered_groups) / page_size))
-			page_number = st.number_input(
-				"Page",
-				min_value=1,
-				max_value=total_pages,
-				value=1,
-				step=1,
-				key=f"proposal-page-number-{request_id}",
-			)
-
-			start = (page_number - 1) * page_size
-			end = start + page_size
-			visible_groups = filtered_groups[start:end]
-
-			st.caption(
-				f"Showing groups {start + 1}–{min(end, len(filtered_groups))} of {len(filtered_groups)} filtered groups."
-			)
-
-			table_rows = [
-				{
-					"group_id": g.get("group_id"),
-					"summary": g.get("summary"),
-					"issue_family": g.get("issue_label"),
-					"category": g.get("category"),
-					"severity": g.get("severity"),
-					"priority": g.get("priority", "normal"),
-					"member_count": g.get("member_count", 0),
-					"status": g.get("status", "proposed"),
-				}
-				for g in visible_groups
-			]
-
-			df = pd.DataFrame(table_rows)
-
-			selection = st.dataframe(
-				df,
-				use_container_width=True,
-				hide_index=True,
-				on_select="rerun",
-				selection_mode="single-row",
-				key=f"proposal-group-table-{request_id}",
-			)
-
-			selected_rows = []
-			if selection and "selection" in selection and "rows" in selection["selection"]:
-				selected_rows = selection["selection"]["rows"]
-
-			selected_group = None
-			if selected_rows:
-				selected_idx = selected_rows[0]
-				if 0 <= selected_idx < len(visible_groups):
-					selected_group = visible_groups[selected_idx]
-
-			col_a, col_b, col_c, col_d = st.columns([2, 2, 2, 4])
-
-			with col_a:
-				if st.button("Approve visible groups", key=f"approve-visible-groups-{request_id}-{page_number}"):
-					if handler is not None:
-						ids = _proposal_ids_from_groups(visible_groups)
-						handler.save_decisions_bulk(
-							[
-								{
-									"proposal_id": pid,
-									"status": "accepted",
-									"reviewer": "human",
-								}
-								for pid in ids
-							]
-						)
-						st.success(f"Approved {len(visible_groups)} group(s) / {len(ids)} proposal(s).")
-						st.rerun()
-
-			with col_b:
-				if st.button("Approve filtered groups", key=f"approve-filtered-groups-{request_id}-{page_number}"):
-					if handler is not None:
-						ids = _proposal_ids_from_groups(filtered_groups)
-						handler.save_decisions_bulk(
-							[
-								{
-									"proposal_id": pid,
-									"status": "accepted",
-									"reviewer": "human",
-								}
-								for pid in ids
-							]
-						)
-						st.success(f"Approved {len(filtered_groups)} filtered group(s) / {len(ids)} proposal(s).")
-						st.rerun()
-
-			with col_c:
-				if st.button("Approve everything (testing)", key=f"approve-all-{request_id}"):
-					if handler is not None:
-						handler.save_decisions_bulk(
-							[
-								{
-									"proposal_id": p["proposal_id"],
-									"status": "accepted",
-									"reviewer": "human",
-								}
-								for p in proposals
-							]
-						)
-						st.success(f"Approved all {len(proposals)} proposal(s).")
-						st.rerun()
-
-			with col_d:
-				st.caption(
-					"Select one grouped row below to inspect and approve/reject/reset the whole group at once."
-				)
-
-			if selected_group is not None:
-				st.markdown("### Selected proposal group")
-				st.markdown(_format_group_detail_markdown(selected_group))
-
-				setup_actions = _group_setup_actions(selected_group)
-				if setup_actions:
-					st.markdown("#### Quick actions")
-					action_cols = st.columns(len(setup_actions))
-					for idx, (label, target) in enumerate(setup_actions):
-						with action_cols[idx]:
-							if st.button(
-									label,
-									key=f"group-setup-action-{request_id}-{selected_group['group_id']}-{target}",
-							):
-								st.session_state[f"campaign-setup-focus-{request_id}"] = target
-								st.rerun()
-
-				member_ids = selected_group.get("member_proposal_ids", [])
-				current_status = selected_group.get("status", "proposed")
-				members = selected_group.get("members", [])
-
-				col1, col2, col3, col4 = st.columns([1, 1, 1, 4])
-
-				with col1:
-					if st.button(
-							"Approve group",
-							key=f"approve-selected-group-{request_id}-{selected_group['group_id']}",
-					):
-						if handler is not None:
-							handler.save_decisions_bulk(
-								[
-									{
-										"proposal_id": pid,
-										"status": "accepted",
-										"reviewer": "human",
-									}
-									for pid in member_ids
-								]
-							)
-							st.rerun()
-
-				with col2:
-					if st.button(
-							"Reject group",
-							key=f"reject-selected-group-{request_id}-{selected_group['group_id']}",
-					):
-						if handler is not None:
-							handler.save_decisions_bulk(
-								[
-									{
-										"proposal_id": pid,
-										"status": "rejected",
-										"reviewer": "human",
-									}
-									for pid in member_ids
-								]
-							)
-							st.rerun()
-
-				with col3:
-					if st.button(
-							"Reset group",
-							key=f"reset-selected-group-{request_id}-{selected_group['group_id']}",
-					):
-						if handler is not None:
-							handler.save_decisions_bulk(
-								[
-									{
-										"proposal_id": pid,
-										"status": "proposed",
-										"reviewer": "human",
-									}
-									for pid in member_ids
-								]
-							)
-							st.rerun()
-
-				with col4:
-					st.caption(f"Current group status: **{current_status}**")
-
-				if members:
-					st.markdown("#### Member proposals")
-
-					member_rows = [
-						{
-							"proposal_id": m.get("proposal_id"),
-							"challenge_name": m.get("challenge_name") or "General",
-							"category": m.get("category"),
-							"action_type": m.get("action_type"),
-							"severity": m.get("severity"),
-							"status": m.get("status", "proposed"),
-						}
-						for m in members
-					]
-
-					member_df = pd.DataFrame(member_rows)
-
-					member_selection = st.dataframe(
-						member_df,
-						use_container_width=True,
-						hide_index=True,
-						on_select="rerun",
-						selection_mode="single-row",
-						key=f"group-member-table-{request_id}-{selected_group['group_id']}",
-					)
-
-					selected_member_rows = []
-					if (
-							member_selection
-							and "selection" in member_selection
-							and "rows" in member_selection["selection"]
-					):
-						selected_member_rows = member_selection["selection"]["rows"]
-
-					selected_member = None
-					if selected_member_rows:
-						selected_idx = selected_member_rows[0]
-						if 0 <= selected_idx < len(members):
-							selected_member = members[selected_idx]
-
-					if selected_member is not None:
-						st.markdown("#### Selected member proposal")
-						st.markdown(_format_member_detail_markdown(selected_member))
-
-						member_pid = selected_member.get("proposal_id")
-						member_status = selected_member.get("status", "proposed")
-
-						colm1, colm2, colm3, colm4 = st.columns([1, 1, 1, 4])
-
-						with colm1:
-							if st.button(
-									"Approve member",
-									key=f"approve-member-{request_id}-{member_pid}",
-							):
-								if handler is not None:
-									handler.save_decision(
-										proposal_id=member_pid,
-										status="accepted",
-										reviewer="human",
-									)
-									st.rerun()
-
-						with colm2:
-							if st.button(
-									"Reject member",
-									key=f"reject-member-{request_id}-{member_pid}",
-							):
-								if handler is not None:
-									handler.save_decision(
-										proposal_id=member_pid,
-										status="rejected",
-										reviewer="human",
-									)
-									st.rerun()
-
-						with colm3:
-							if st.button(
-									"Reset member",
-									key=f"reset-member-{request_id}-{member_pid}",
-							):
-								if handler is not None:
-									handler.save_decision(
-										proposal_id=member_pid,
-										status="proposed",
-										reviewer="human",
-									)
-									st.rerun()
-
-						with colm4:
-							st.caption(f"Current member status: **{member_status}**")
-
-	# ---------- Draft generation / execution ----------
-	if workspace_root and request_id and snapshot_path:
-		draft_generator = PatchedExcelDraftGenerator(workspace_root=workspace_root, request_id=request_id)
-
-		col_c, col_d, col_e = st.columns([2, 5, 3])
-
-		with col_c:
-			if st.button(
-				"Generate patched Excel draft",
-				key=f"generate-patched-draft-{request_id}",
-			):
-				manifest = _ensure_current_manifest_from_saved_decisions(result)
-				if manifest is None:
-					st.warning("Could not build an internal patch manifest for this workspace.")
-				else:
-					draft_summary = draft_generator.generate(
-						snapshot_path=snapshot_path,
-						manifest=manifest,
-					)
-					result["patched_excel_draft"] = draft_summary
-					st.success("Patched Excel draft generated.")
-					st.rerun()
-
-		with col_d:
-			st.caption(
-				"Applies currently accepted proposals to a copy of the campaign export. "
-				"Unsupported operations remain listed in the notes sheet."
-			)
-
-		with col_e:
-			if draft_generator.draft_path.exists():
-				if st.button(
-					"Open patched draft as current campaign",
-					key=f"open-patched-draft-{request_id}",
-				):
-					st.session_state["reload_generated_draft_payload"] = {
-						"path": str(draft_generator.draft_path),
-						"workspace_id": workspace_id,
-					}
-					st.rerun()
-
-		if draft_generator.draft_path.exists():
-			st.caption(f"Latest patched draft path: {draft_generator.draft_path}")
-
-			if "patched_excel_draft" not in result and draft_generator.summary_path.exists():
-				import json
-				result["patched_excel_draft"] = json.loads(
-					draft_generator.summary_path.read_text(encoding="utf-8")
-				)
-
-			with st.expander("Patched draft preview", expanded=False):
-				st.markdown(_build_patched_draft_markdown(result))
-
-	if workspace_root and request_id:
-		role_generator = TaskRolesDraftGenerator(workspace_root=workspace_root, request_id=request_id)
-
-		col_e, col_f = st.columns([2, 5])
-
-		with col_e:
-			if st.button(
-				"Generate task-role sidecar draft",
-				key=f"generate-role-draft-{request_id}",
-			):
-				manifest = _ensure_current_manifest_from_saved_decisions(result)
-				if manifest is None:
-					st.warning("Could not build an internal patch manifest for this workspace.")
-				else:
-					role_summary = role_generator.generate(manifest)
-					result["task_roles_draft"] = role_summary
-					st.success("Task-role sidecar draft generated.")
-					st.rerun()
-
-		with col_f:
-			st.caption(
-				"Builds a draft `task_roles.csv` sidecar from currently accepted role-annotation proposals. "
-				"This is useful until GameBus supports native task-role metadata."
-			)
-
-		if role_generator.draft_path.exists():
-			st.caption(f"Latest task-role draft path: {role_generator.draft_path}")
-
-			if "task_roles_draft" not in result and role_generator.summary_path.exists():
-				import json
-				result["task_roles_draft"] = json.loads(
-					role_generator.summary_path.read_text(encoding="utf-8")
-				)
-
-			with st.expander("Task-role sidecar draft preview", expanded=False):
-				st.markdown(_build_task_roles_draft_markdown(result))
+    fixer = result.get("fix_proposals", {})
+    if not fixer:
+        return
+
+    st.subheader("Fix proposals")
+
+    raw_count = fixer.get("proposal_count", 0)
+    path = fixer.get("proposals_path")
+
+    proposals = fixer.get("proposals", []) or []
+    if not proposals:
+        st.info("No concrete repair proposals were generated for this run.")
+        if path:
+            st.caption(f"Saved proposal artifact: {path}")
+        return
+
+    assistant_meta = result.get("assistant_meta", {}) or {}
+    workspace_root = assistant_meta.get("workspace_root")
+    workspace_id = assistant_meta.get("workspace_id")
+    request_id = assistant_meta.get("request_id")
+    snapshot_path = assistant_meta.get("snapshot_path")
+
+    handler = None
+    if workspace_root and request_id:
+        handler = ApprovalHandler(workspace_root=workspace_root, request_id=request_id)
+        proposals = handler.merge_statuses(proposals)
+        result["fix_proposals"]["proposals"] = proposals
+
+    capability_summary = result.get("assistant_meta", {}).get("capability_summary", {}) or {}
+    proposal_groups = build_proposal_groups(proposals)
+    proposal_groups = annotate_proposal_groups_with_context(proposal_groups, capability_summary)
+
+    status_counts = _count_fix_proposals_by_status(proposals)
+    priority_count = _priority_group_count(proposal_groups)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Proposal groups", len(proposal_groups))
+    c2.metric("Raw proposals", raw_count)
+    c3.metric("Pending review", status_counts.get("proposed", 0))
+    c4.metric("Accepted", status_counts.get("accepted", 0))
+    c5.metric("Rejected", status_counts.get("rejected", 0))
+
+    if priority_count > 0:
+        st.info(f"**{priority_count}** proposal group(s) are marked as higher-priority review targets.")
+
+    if path:
+        st.caption(f"Saved proposal artifact: {path}")
+
+    with st.expander("Proposal review", expanded=False):
+        all_statuses = ["proposed", "accepted", "rejected", "mixed"]
+
+        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns([2, 2, 3, 2, 2])
+
+        with col_f1:
+            status_filter = st.multiselect(
+                "Statuses",
+                options=all_statuses,
+                default=all_statuses,
+                key=f"proposal-status-filter-{request_id}",
+            )
+
+        with col_f2:
+            page_size = st.selectbox(
+                "Rows per page",
+                options=[25, 50, 100],
+                index=1,
+                key=f"proposal-page-size-{request_id}",
+            )
+
+        with col_f3:
+            search = st.text_input(
+                "Search proposal/challenge/action",
+                key=f"proposal-search-{request_id}",
+            ).strip().lower()
+
+        with col_f4:
+            focus_filter = st.selectbox(
+                "Focus",
+                options=[
+                    "All",
+                    "Recommended now",
+                    "Gatekeeping setup",
+                    "Maintenance setup",
+                    "Point fixes",
+                    "TTM review",
+                ],
+                key=f"proposal-focus-filter-{request_id}",
+            )
+
+        with col_f5:
+            with st.popover("ℹ️ Severity"):
+                st.markdown(_severity_explainer_markdown())
+
+        filtered_groups = []
+        for group in proposal_groups:
+            if group.get("status", "proposed") not in status_filter:
+                continue
+
+            if not matches_group_focus(group, focus_filter):
+                continue
+
+            if search:
+                haystack = " ".join(
+                    str(group.get(k, "") or "")
+                    for k in [
+                        "group_id",
+                        "summary",
+                        "issue_family",
+                        "issue_label",
+                        "category",
+                        "severity",
+                        "priority",
+                        "priority_reason",
+                        "context_tags",
+                    ]
+                ).lower()
+                if search not in haystack:
+                    continue
+
+            filtered_groups.append(group)
+
+        filtered_raw_count = len(_proposal_ids_from_groups(filtered_groups))
+        st.caption(
+            f"Showing **{len(filtered_groups)} group(s)** covering **{filtered_raw_count} proposal(s)** "
+            f"out of **{len(proposal_groups)} groups / {raw_count} proposals**."
+        )
+
+        if not filtered_groups:
+            st.info("No proposal groups match the current filters.")
+        else:
+            col_a, col_b, col_c, col_d = st.columns([2, 2, 2, 4])
+
+            with col_a:
+                if st.button("Approve visible groups", key=f"approve-visible-groups-{request_id}"):
+                    if handler is not None:
+                        ids = _proposal_ids_from_groups(filtered_groups[:page_size])
+                        handler.save_decisions_bulk(
+                            [
+                                {
+                                    "proposal_id": pid,
+                                    "status": "accepted",
+                                    "reviewer": "human",
+                                }
+                                for pid in ids
+                            ]
+                        )
+                        st.success(f"Approved {len(ids)} proposal(s) from the visible slice.")
+                        st.rerun()
+
+            with col_b:
+                if st.button("Approve filtered groups", key=f"approve-filtered-groups-{request_id}"):
+                    if handler is not None:
+                        ids = _proposal_ids_from_groups(filtered_groups)
+                        handler.save_decisions_bulk(
+                            [
+                                {
+                                    "proposal_id": pid,
+                                    "status": "accepted",
+                                    "reviewer": "human",
+                                }
+                                for pid in ids
+                            ]
+                        )
+                        st.success(f"Approved {len(ids)} filtered proposal(s).")
+                        st.rerun()
+
+            with col_c:
+                if st.button("Approve everything (testing)", key=f"approve-all-{request_id}"):
+                    if handler is not None:
+                        handler.save_decisions_bulk(
+                            [
+                                {
+                                    "proposal_id": p["proposal_id"],
+                                    "status": "accepted",
+                                    "reviewer": "human",
+                                }
+                                for p in proposals
+                            ]
+                        )
+                        st.success(f"Approved all {len(proposals)} proposal(s).")
+                        st.rerun()
+
+            with col_d:
+                st.caption(
+                    "Select one grouped row below to inspect and approve/reject/reset the whole group at once."
+                )
+
+            total_pages = max(1, math.ceil(len(filtered_groups) / page_size))
+            page_number = st.number_input(
+                "Page",
+                min_value=1,
+                max_value=total_pages,
+                value=1,
+                step=1,
+                key=f"proposal-page-number-{request_id}",
+            )
+
+            start = (page_number - 1) * page_size
+            end = start + page_size
+            visible_groups = filtered_groups[start:end]
+
+            st.caption(
+                f"Showing groups {start + 1}–{min(end, len(filtered_groups))} of {len(filtered_groups)} filtered groups."
+            )
+
+            df = pd.DataFrame(_proposal_group_table_rows(visible_groups))
+
+            selection = st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key=f"proposal-group-table-{request_id}",
+            )
+
+            selected_rows = []
+            if selection and "selection" in selection and "rows" in selection["selection"]:
+                selected_rows = selection["selection"]["rows"]
+
+            selected_group = None
+            if selected_rows:
+                selected_idx = selected_rows[0]
+                if 0 <= selected_idx < len(visible_groups):
+                    selected_group = visible_groups[selected_idx]
+
+            if selected_group is not None:
+                st.markdown("### Selected proposal group")
+                st.markdown(_format_group_detail_markdown(selected_group))
+
+                setup_actions = _group_setup_actions(selected_group)
+                if setup_actions:
+                    st.markdown("#### Quick actions")
+                    action_cols = st.columns(len(setup_actions))
+                    for idx, (label, target) in enumerate(setup_actions):
+                        with action_cols[idx]:
+                            if st.button(
+                                label,
+                                key=f"group-setup-action-{request_id}-{selected_group['group_id']}-{target}",
+                            ):
+                                st.session_state[f"campaign-setup-focus-{request_id}"] = target
+                                st.rerun()
+
+                member_ids = selected_group.get("member_proposal_ids", [])
+                current_status = selected_group.get("status", "proposed")
+                members = selected_group.get("members", [])
+
+                col1, col2, col3, col4 = st.columns([1, 1, 1, 4])
+
+                with col1:
+                    if st.button(
+                        "Approve group",
+                        key=f"approve-selected-group-{request_id}-{selected_group['group_id']}",
+                    ):
+                        if handler is not None:
+                            handler.save_decisions_bulk(
+                                [
+                                    {
+                                        "proposal_id": pid,
+                                        "status": "accepted",
+                                        "reviewer": "human",
+                                    }
+                                    for pid in member_ids
+                                ]
+                            )
+                            st.rerun()
+
+                with col2:
+                    if st.button(
+                        "Reject group",
+                        key=f"reject-selected-group-{request_id}-{selected_group['group_id']}",
+                    ):
+                        if handler is not None:
+                            handler.save_decisions_bulk(
+                                [
+                                    {
+                                        "proposal_id": pid,
+                                        "status": "rejected",
+                                        "reviewer": "human",
+                                    }
+                                    for pid in member_ids
+                                ]
+                            )
+                            st.rerun()
+
+                with col3:
+                    if st.button(
+                        "Reset group",
+                        key=f"reset-selected-group-{request_id}-{selected_group['group_id']}",
+                    ):
+                        if handler is not None:
+                            handler.save_decisions_bulk(
+                                [
+                                    {
+                                        "proposal_id": pid,
+                                        "status": "proposed",
+                                        "reviewer": "human",
+                                    }
+                                    for pid in member_ids
+                                ]
+                            )
+                            st.rerun()
+
+                with col4:
+                    st.caption(f"Current group status: **{current_status}**")
+
+                if members:
+                    st.markdown("#### Member proposals")
+
+                    member_rows = [
+                        {
+                            "proposal_id": m.get("proposal_id"),
+                            "challenge_name": m.get("challenge_name") or "General",
+                            "category": m.get("category"),
+                            "action_type": m.get("action_type"),
+                            "severity": m.get("severity"),
+                            "status": m.get("status", "proposed"),
+                        }
+                        for m in members
+                    ]
+
+                    member_df = pd.DataFrame(member_rows)
+
+                    member_selection = st.dataframe(
+                        member_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        on_select="rerun",
+                        selection_mode="single-row",
+                        key=f"group-member-table-{request_id}-{selected_group['group_id']}",
+                    )
+
+                    selected_member_rows = []
+                    if (
+                        member_selection
+                        and "selection" in member_selection
+                        and "rows" in member_selection["selection"]
+                    ):
+                        selected_member_rows = member_selection["selection"]["rows"]
+
+                    selected_member = None
+                    if selected_member_rows:
+                        selected_idx = selected_member_rows[0]
+                        if 0 <= selected_idx < len(members):
+                            selected_member = members[selected_idx]
+
+                    if selected_member is not None:
+                        st.markdown("#### Selected member proposal")
+                        st.markdown(_format_member_detail_markdown(selected_member))
+
+                        member_pid = selected_member.get("proposal_id")
+                        member_status = selected_member.get("status", "proposed")
+
+                        colm1, colm2, colm3, colm4 = st.columns([1, 1, 1, 4])
+
+                        with colm1:
+                            if st.button(
+                                "Approve member",
+                                key=f"approve-member-{request_id}-{member_pid}",
+                            ):
+                                if handler is not None:
+                                    handler.save_decision(
+                                        proposal_id=member_pid,
+                                        status="accepted",
+                                        reviewer="human",
+                                    )
+                                    st.rerun()
+
+                        with colm2:
+                            if st.button(
+                                "Reject member",
+                                key=f"reject-member-{request_id}-{member_pid}",
+                            ):
+                                if handler is not None:
+                                    handler.save_decision(
+                                        proposal_id=member_pid,
+                                        status="rejected",
+                                        reviewer="human",
+                                    )
+                                    st.rerun()
+
+                        with colm3:
+                            if st.button(
+                                "Reset member",
+                                key=f"reset-member-{request_id}-{member_pid}",
+                            ):
+                                if handler is not None:
+                                    handler.save_decision(
+                                        proposal_id=member_pid,
+                                        status="proposed",
+                                        reviewer="human",
+                                    )
+                                    st.rerun()
+
+                        with colm4:
+                            st.caption(f"Current member status: **{member_status}**")
+
+    # ---------- Draft generation / execution ----------
+    if workspace_root and request_id and snapshot_path:
+        draft_generator = PatchedExcelDraftGenerator(workspace_root=workspace_root, request_id=request_id)
+
+        col_c, col_d, col_e = st.columns([2, 5, 3])
+
+        with col_c:
+            if st.button(
+                "Generate patched Excel draft",
+                key=f"generate-patched-draft-{request_id}",
+            ):
+                manifest = _ensure_current_manifest_from_saved_decisions(result)
+                if manifest is None:
+                    st.warning("Could not build an internal patch manifest for this workspace.")
+                else:
+                    draft_summary = draft_generator.generate(
+                        snapshot_path=snapshot_path,
+                        manifest=manifest,
+                    )
+                    result["patched_excel_draft"] = draft_summary
+                    st.success("Patched Excel draft generated.")
+                    st.rerun()
+
+        with col_d:
+            st.caption(
+                "Applies currently accepted proposals to a copy of the campaign export. "
+                "Unsupported operations remain listed in the notes sheet."
+            )
+
+        with col_e:
+            if draft_generator.draft_path.exists():
+                if st.button(
+                    "Open patched draft as current campaign",
+                    key=f"open-patched-draft-{request_id}",
+                ):
+                    st.session_state["reload_generated_draft_payload"] = {
+                        "path": str(draft_generator.draft_path),
+                        "workspace_id": workspace_id,
+                    }
+                    st.rerun()
+
+        if draft_generator.draft_path.exists():
+            st.caption(f"Latest patched draft path: {draft_generator.draft_path}")
+
+            if "patched_excel_draft" not in result and draft_generator.summary_path.exists():
+                import json
+                result["patched_excel_draft"] = json.loads(
+                    draft_generator.summary_path.read_text(encoding="utf-8")
+                )
+
+            with st.expander("Patched draft preview", expanded=False):
+                st.markdown(_build_patched_draft_markdown(result))
+
+    if workspace_root and request_id:
+        role_generator = TaskRolesDraftGenerator(workspace_root=workspace_root, request_id=request_id)
+
+        col_e, col_f = st.columns([2, 5])
+
+        with col_e:
+            if st.button(
+                "Generate task-role sidecar draft",
+                key=f"generate-role-draft-{request_id}",
+            ):
+                manifest = _ensure_current_manifest_from_saved_decisions(result)
+                if manifest is None:
+                    st.warning("Could not build an internal patch manifest for this workspace.")
+                else:
+                    role_summary = role_generator.generate(manifest)
+                    result["task_roles_draft"] = role_summary
+                    st.success("Task-role sidecar draft generated.")
+                    st.rerun()
+
+        with col_f:
+            st.caption(
+                "Builds a draft `task_roles.csv` sidecar from currently accepted role-annotation proposals. "
+                "This is useful until GameBus supports native task-role metadata."
+            )
+
+        if role_generator.draft_path.exists():
+            st.caption(f"Latest task-role draft path: {role_generator.draft_path}")
+
+            if "task_roles_draft" not in result and role_generator.summary_path.exists():
+                import json
+                result["task_roles_draft"] = json.loads(
+                    role_generator.summary_path.read_text(encoding="utf-8")
+                )
+
+            with st.expander("Task-role sidecar draft preview", expanded=False):
+                st.markdown(_build_task_roles_draft_markdown(result))
+
 
 
 def render_agent_trace_panel(result: Dict[str, Any], show_trace: bool) -> None:
@@ -1300,6 +1627,8 @@ def render_analysis_panels(result: Dict[str, Any], show_trace: bool) -> None:
 		return
 
 	render_analysis_overview(result)
+	render_assistant_guide_panel(result)
+	render_findings_overview_panel(result)
 	render_capability_panel(result)
 	render_theory_panel(result)
 	render_point_gatekeeping_panel(result)
