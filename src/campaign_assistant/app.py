@@ -24,7 +24,6 @@ from campaign_assistant.ui.overview import render_analysis_overview
 from campaign_assistant.ui.session import init_state
 from campaign_assistant.ui.setup import render_campaign_setup_panel
 from campaign_assistant.ui.sidebar import render_sidebar
-from campaign_assistant.workspace import get_or_create_workspace_for_campaign
 from campaign_assistant.ui.copy import WORKFLOW_PAGE_COPY
 
 
@@ -325,7 +324,7 @@ def _sync_main_workflow_focus_from_result(result) -> None:
 
 
 def _render_overview_page(result) -> None:
-	_render_page_intro("Overview", WORKFLOW_PAGE_COPY["Overview"]["description"])g
+	_render_page_intro("Overview", WORKFLOW_PAGE_COPY["Overview"]["description"])
 
 	if not result:
 		_render_empty_workflow_state("Overview")
@@ -359,7 +358,7 @@ def _render_overview_page(result) -> None:
 
 
 def _render_setup_page(result) -> None:
-	_render_page_intro("Setup")
+	_render_page_intro("Setup", WORKFLOW_PAGE_COPY["Setup"]["description"])
 
 	if not result:
 		_render_empty_workflow_state("Setup")
@@ -369,7 +368,7 @@ def _render_setup_page(result) -> None:
 
 
 def _render_findings_page(result) -> None:
-	_render_page_intro("Findings")
+	_render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
 
 	if not result:
 		_render_empty_workflow_state("Findings")
@@ -386,7 +385,7 @@ def _render_findings_page(result) -> None:
 
 
 def _render_fixes_page(result) -> None:
-	_render_page_intro("Fixes")
+	_render_page_intro("Fixes", WORKFLOW_PAGE_COPY["Fixes"]["description"])
 
 	if not result:
 		_render_empty_workflow_state("Fixes")
@@ -409,7 +408,7 @@ def _handle_pending_assistant_prompt(logger, result) -> None:
 
 
 def _render_assistant_page(logger, show_trace: bool) -> None:
-	_render_page_intro("Assistant")
+	_render_page_intro("Assistant", WORKFLOW_PAGE_COPY["Assistant"]["description"])
 
 	result = st.session_state.result
 
