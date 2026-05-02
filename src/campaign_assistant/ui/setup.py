@@ -17,6 +17,7 @@ from campaign_assistant.metadata.adapters.sidecar import (
 )
 from campaign_assistant.ui.privacy_diagnostics import render_privacy_diagnostics_panel
 from campaign_assistant.ui.workspace_readiness import build_workspace_readiness_model
+from campaign_assistant.ui.labels import format_tristate
 
 
 _CAPABILITY_FIELDS = [
@@ -276,6 +277,55 @@ def _focus_label(focus: str | None) -> str:
 	return mapping.get(focus or "", "Campaign setup")
 
 
+
+
+def build_setup_page_status_model(result: dict[str, Any]) -> dict[str, Any]:
+	assistant_meta = dict(result.get("assistant_meta", {}) or {})
+	capability_summary = dict(assistant_meta.get("capability_summary", {}) or {})
+	readiness = dict(assistant_meta.get("workspace_readiness", {}) or {})
+
+	capabilities = dict(capability_summary.get("capabilities", {}) or {})
+	task_role_count = int(capability_summary.get("task_role_count", 0) or 0)
+
+	progression = capabilities.get("uses_progression")
+	uses_ttm = capabilities.get("uses_ttm")
+
+	if readiness.get("progression_applicable") and not readiness.get("gatekeeping_semantics_ready", True):
+		status = "needs_annotations"
+		message = "Complete task-role annotations first to unlock stronger progression/gatekeeping validation."
+	elif readiness.get("progression_applicable"):
+		status = "ready"
+		message = "Workspace setup is sufficient for progression/gatekeeping interpretation."
+	else:
+		status = "general"
+		message = "Use this page to review and edit workspace metadata for the current campaign."
+
+	return {
+		"status": status,
+		"message": message,
+		"task_role_count": task_role_count,
+		"uses_progression": progression,
+		"uses_ttm": uses_ttm,
+	}
+
+
+def render_setup_page_status(result: dict[str, Any]) -> None:
+	model = build_setup_page_status_model(result)
+
+	if model["status"] == "needs_annotations":
+		st.warning(model["message"])
+	elif model["status"] == "ready":
+		st.success(model["message"])
+	else:
+		st.info(model["message"])
+
+	c1, c2, c3 = st.columns(3)
+	c1.metric("Task-role annotations", model["task_role_count"])
+	c2.metric("Progression", format_tristate(model["uses_progression"]))
+	c3.metric("TTM", format_tristate(model["uses_ttm"]))
+
+
+
 def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 	assistant_meta = result.get("assistant_meta", {}) or {}
 	workspace_root = assistant_meta.get("workspace_root")
@@ -293,11 +343,12 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 
 	st.caption(f"Workspace: {workspace_id}")
 	st.caption(f"Workspace root: {workspace_root}")
+	st.caption("Use this page to edit workspace metadata and then re-run analysis.")
+
+	render_setup_page_status(result)
 
 	privacy_report = dict(assistant_meta.get("privacy_report", {}) or {})
 	render_privacy_diagnostics_panel(privacy_report)
-
-	_render_workspace_readiness_section(result, request_id)
 
 	_ensure_profile_widget_defaults(workspace_root, request_id, result)
 
@@ -318,6 +369,12 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 	if conflict_messages:
 		for msg in conflict_messages:
 			st.warning(msg)
+
+	readiness = dict(assistant_meta.get("workspace_readiness", {}) or {})
+	if readiness.get("progression_applicable") and not readiness.get("gatekeeping_semantics_ready", True):
+		st.info(
+			"Recommended first step: complete **Task-role annotations** so stronger progression/gatekeeping checks can be enabled."
+		)
 
 	with st.expander("Capability profile", expanded=(setup_focus == "profile")):
 		col_a, col_b, col_c = st.columns([3, 2, 2])
@@ -359,8 +416,12 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 				path = save_campaign_profile_json(workspace_root, payload)
 				st.success(f"Saved campaign profile to {path}")
 
-	with st.expander("Optional overrides", expanded=(setup_focus == "override")):
+	with st.expander("Optional overrides (advanced)", expanded=(setup_focus == "override")):
+		st.caption(
+			"Use this only when you need to manually override inferred or profile-based metadata."
+		)
 		current_override = load_metadata_override_json(workspace_root)
+
 		override_text = st.text_area(
 			"metadata_override.json content (JSON)",
 			value="" if not current_override else __import__("json").dumps(current_override, indent=2, ensure_ascii=False),
@@ -378,12 +439,33 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 			except Exception as exc:
 				st.error(f"Invalid JSON: {exc}")
 
-	with st.expander("Task-role annotations", expanded=(setup_focus == "task_roles")):
+	readiness = dict(assistant_meta.get("workspace_readiness", {}) or {})
+	task_roles_expanded = (
+			setup_focus == "task_roles"
+			or (
+					readiness.get("progression_applicable")
+					and not readiness.get("gatekeeping_semantics_ready", True)
+			)
+	)
+
+	with st.expander("Task-role annotations", expanded=task_roles_expanded):
+		st.markdown("**Task-role annotations**")
 		st.caption(
 			"Use this editor when GameBus does not yet store gatekeeping / maintenance metadata natively."
 		)
 
 		df = _task_roles_dataframe(workspace_root)
+		current_nonempty_rows = max(
+			0,
+			len(
+				[
+					row for row in df.fillna("").to_dict(orient="records")
+					if any(str(row.get(k, "") or "").strip() for k in ["task_id", "task_name", "role", "notes"])
+				]
+			),
+		)
+		st.caption(f"Current annotated rows: {current_nonempty_rows}")
+
 		edited_df = st.data_editor(
 			df,
 			use_container_width=True,
@@ -411,9 +493,13 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 		theory_dir = workspace_root / "evidence" / "theory"
 
 		st.markdown("**Current files**")
-		st.markdown(f"- task_roles.csv: `{(metadata_dir / 'task_roles.csv').exists()}`")
-		st.markdown(f"- ttm_structure.pdf: `{(theory_dir / 'ttm_structure.pdf').exists()}`")
-		st.markdown(f"- intervention_mapping.xlsx: `{(theory_dir / 'intervention_mapping.xlsx').exists()}`")
+		f1, f2, f3 = st.columns(3)
+		f1.metric("task_roles.csv", "Present" if (metadata_dir / "task_roles.csv").exists() else "Missing")
+		f2.metric("ttm_structure.pdf", "Present" if (theory_dir / "ttm_structure.pdf").exists() else "Missing")
+		f3.metric(
+			"intervention_mapping.xlsx",
+			"Present" if (theory_dir / "intervention_mapping.xlsx").exists() else "Missing",
+		)
 
 		task_roles_file = st.file_uploader(
 			"Upload task_roles.csv",
@@ -473,10 +559,3 @@ def render_campaign_setup_panel(result: dict[str, Any]) -> None:
 				"workspace_id": workspace_id,
 			}
 			st.rerun()
-
-	privacy_report = {}
-	if isinstance(result, dict):
-		assistant_meta = dict(result.get("assistant_meta", {}) or {})
-		privacy_report = dict(assistant_meta.get("privacy_report", {}) or {})
-
-	render_privacy_diagnostics_panel(privacy_report)

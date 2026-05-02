@@ -20,6 +20,9 @@ from campaign_assistant.proposals import (
 	matches_group_focus,
 )
 from campaign_assistant.ui.overview import render_analysis_overview
+from campaign_assistant.ui.workspace_readiness import build_workspace_readiness_model
+from campaign_assistant.ui.labels import format_tristate
+from campaign_assistant.ui.copy import ASSISTANT_FALLBACK_TEXT
 
 
 HARD_MAX_ISSUES_TO_RENDER = 100
@@ -181,7 +184,7 @@ def render_findings_overview_panel(result: Dict[str, Any]) -> None:
 	failed_checks = list(summary.get("failed_checks", []) or [])
 	errored_checks = list(summary.get("errored_checks", []) or [])
 
-	st.subheader("Findings overview")
+	st.markdown("**Priority summary**")
 
 	c1, c2, c3 = st.columns(3)
 	c1.metric("Total issues", total_issues)
@@ -489,6 +492,62 @@ def render_assistant_guide_panel(result: Dict[str, Any]) -> None:
 
 
 
+def build_assistant_page_status_model(result: Dict[str, Any], message_count: int) -> Dict[str, Any]:
+	summary = result.get("summary", {}) or {}
+	assistant_meta = result.get("assistant_meta", {}) or {}
+	readiness = assistant_meta.get("workspace_readiness", {}) or {}
+	fix_proposals = result.get("fix_proposals", {}) or {}
+
+	total_issues = int(summary.get("total_issues", 0) or 0)
+	proposal_count = int(fix_proposals.get("proposal_count", 0) or 0)
+	selected_checks = list(assistant_meta.get("selected_checks", []) or [])
+
+	if readiness and readiness.get("progression_applicable") and not readiness.get("gatekeeping_semantics_ready", True):
+		status = "needs_setup"
+		message = (
+			"The assistant can already summarize the campaign, but some stronger progression/gatekeeping "
+			"reasoning depends on workspace annotations that are still missing."
+		)
+	elif total_issues > 0:
+		status = "issues_found"
+		message = "The assistant can help you understand the findings and decide what to fix first."
+	else:
+		status = "clean"
+		message = "No issues were found in the selected checks. The assistant can still explain the analysis and workspace status."
+
+	return {
+		"status": status,
+		"message": message,
+		"message_count": message_count,
+		"total_issues": total_issues,
+		"proposal_count": proposal_count,
+		"selected_checks": selected_checks,
+	}
+
+
+def render_assistant_page_status(result: Dict[str, Any], message_count: int) -> None:
+	model = build_assistant_page_status_model(result, message_count)
+
+	st.subheader("Assistant")
+
+	if model["status"] == "needs_setup":
+		st.warning(model["message"])
+	elif model["status"] == "issues_found":
+		st.info(model["message"])
+	else:
+		st.success(model["message"])
+
+	c1, c2, c3 = st.columns(3)
+	c1.metric("Conversation messages", model["message_count"])
+	c2.metric("Issues", model["total_issues"])
+	c3.metric("Proposed fixes", model["proposal_count"])
+
+	if model["selected_checks"]:
+		st.caption(f"Current analysis context: {', '.join(f'`{x}`' for x in model['selected_checks'])}")
+
+
+
+
 def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 	q = user_question.strip().lower()
 
@@ -652,26 +711,25 @@ def answer_question(user_question: str, result: Dict[str, Any]) -> str:
 
 			return "\n\n".join(lines)
 
-	return (
-		"I can help you with the current workflow. Try one of these:\n\n"
-		"- `Summarize the issues`\n"
-		"- `What should I fix first?`\n"
-		"- `Which checks failed?`\n"
-		"- `What setup is missing?`\n"
-		"- `Show point/gatekeeping findings`\n"
-		"- `Show theory grounding`\n"
-		"- `Show fix proposals`\n"
-		"- `What did the agents do?`\n"
-	)
+	return ASSISTANT_FALLBACK_TEXT
 
 
-def render_issues_panel(result: Dict[str, Any]) -> None:
+
+def _render_panel_heading(title: str, *, compact: bool = False) -> None:
+	if compact:
+		st.markdown(f"**{title}**")
+	else:
+		st.subheader(title)
+
+
+
+def render_issues_panel(result: Dict[str, Any], compact: bool = False) -> None:
 	issues_by_check = result.get("issues_by_check", {})
 	summary = result.get("summary", {})
 	issue_count_by_check = summary.get("issue_count_by_check", {})
 	single_check_selected = _selected_single_check(result)
 
-	st.subheader("Detailed issues")
+	_render_panel_heading("Detailed issues", compact=compact)
 
 	non_empty_checks = [
 		check_name
@@ -683,11 +741,11 @@ def render_issues_panel(result: Dict[str, Any]) -> None:
 		st.success("No issues found.")
 		return
 
-	for check_name in non_empty_checks:
+	for idx, check_name in enumerate(non_empty_checks):
 		friendly = FRIENDLY_CHECK_NAMES.get(check_name, check_name)
 		count = issue_count_by_check.get(check_name, len(issues_by_check[check_name]))
 
-		with st.expander(f"{friendly} ({count})", expanded=False):
+		with st.expander(f"{friendly} ({count})", expanded=(idx == 0)):
 			st.markdown(
 				build_issue_markdown_list(
 					issues_by_check[check_name],
@@ -804,65 +862,110 @@ def build_point_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
 	}
 
 
+
+
+def build_workspace_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
+	capability = build_capability_status_model(result)
+	readiness = build_workspace_readiness_model(result)
+
+	if not capability["has_capability_summary"]:
+		return {
+			"has_workspace_status": False,
+			"status": "empty",
+			"message": "No workspace status is available.",
+			"capability": capability,
+			"readiness": readiness,
+		}
+
+	if readiness["has_readiness"]:
+		if readiness["status"] == "not_applicable":
+			status = "not_applicable"
+			message = "This workspace is configured for a campaign where progression-specific semantics checks are not currently applicable."
+		elif readiness["status"] == "needs_annotations":
+			status = "needs_setup"
+			message = "Workspace interpretation is available, but stronger progression semantics checks are still disabled until required task-role annotations are added."
+		else:
+			status = "ready"
+			message = "Workspace interpretation is available and stronger progression semantics checks are ready."
+	else:
+		status = "resolved"
+		message = "Workspace capability resolution completed."
+
+	return {
+		"has_workspace_status": True,
+		"status": status,
+		"message": message,
+		"capability": capability,
+		"readiness": readiness,
+	}
+
+
+
 def render_capability_panel(result: Dict[str, Any]) -> None:
-	model = build_capability_status_model(result)
-	if not model["has_capability_summary"]:
+	model = build_workspace_status_model(result)
+	if not model["has_workspace_status"]:
 		return
 
-	st.subheader("Campaign capability summary")
+	capability = model["capability"]
+	readiness = model["readiness"]
 
-	uses_progression = model["uses_progression"]
-	uses_gatekeeping = model["uses_gatekeeping"]
-	uses_ttm = model["uses_ttm"]
-	task_role_count = model["task_role_count"]
+	st.subheader("Workspace status")
 
-	if uses_progression is False:
-		st.info("This campaign is currently interpreted as not using progression-specific logic.")
-	elif uses_progression is True and task_role_count == 0:
-		st.warning("This campaign appears to use progression, but no task-role annotations are currently available.")
+	if model["status"] == "needs_setup":
+		st.warning(model["message"])
+	elif model["status"] == "not_applicable":
+		st.info(model["message"])
 	else:
-		st.info("Capability resolution completed. The workspace profile is available below.")
+		st.info(model["message"])
 
 	c1, c2, c3, c4 = st.columns(4)
-	c1.metric("Task-role annotations", task_role_count)
-	c2.metric("Progression", str(uses_progression))
-	c3.metric("Gatekeeping", str(uses_gatekeeping))
-	c4.metric("TTM", str(uses_ttm))
+	c1.metric("Task-role annotations", capability["task_role_count"])
+	c2.metric("Progression", format_tristate(capability["uses_progression"]))
+	c3.metric(
+		"Semantics ready",
+		"Yes" if readiness.get("gatekeeping_semantics_ready") else "No" if readiness.get(
+			"has_readiness") else "Unknown",
+	)
+	c4.metric("TTM", format_tristate(capability["uses_ttm"]))
 
-	setup_hints = model["setup_hints"]
-	if setup_hints:
-		with st.expander("Recommended setup steps", expanded=False):
+	setup_hints = capability["setup_hints"]
+	readiness_reasons = readiness.get("reasons", []) if readiness else []
+
+	if setup_hints or readiness_reasons:
+		with st.expander("Setup guidance", expanded=False):
 			for hint in setup_hints:
 				st.markdown(f"- {hint}")
+			for reason in readiness_reasons:
+				st.markdown(f"- {reason}")
 
 	with st.expander("Resolved capabilities", expanded=False):
-		capabilities = model["capabilities"]
-		sources = model["sources"]
+		capabilities = capability["capabilities"]
+		sources = capability["sources"]
 		for key, value in capabilities.items():
 			source = sources.get(key, "unknown")
 			st.markdown(f"- **{key}**: `{value}` _(source: {source})_")
 
 	with st.expander("Active reasoning modules", expanded=False):
-		for key, value in model["active_modules"].items():
+		for key, value in capability["active_modules"].items():
 			st.markdown(f"- **{key}**: `{value}`")
 
-	if model["notes"]:
+	if capability["notes"]:
 		with st.expander("Metadata notes", expanded=False):
-			for note in model["notes"]:
+			for note in capability["notes"]:
 				st.markdown(f"- {note}")
 
-	if model["missing"]:
+	if capability["missing"]:
 		with st.expander("Missing / uncertain metadata", expanded=False):
-			for item in model["missing"]:
+			for item in capability["missing"]:
 				st.markdown(f"- {item}")
 
 
-def render_theory_panel(result: Dict[str, Any]) -> None:
+def render_theory_panel(result: Dict[str, Any], compact: bool = False) -> None:
 	model = build_theory_status_model(result)
 	if not model["has_theory"]:
 		return
 
-	st.subheader("Theory grounding")
+	_render_panel_heading("Theory grounding", compact=compact)
 
 	if model["status"] == "not_applicable":
 		st.info(model["summary_message"])
@@ -875,8 +978,8 @@ def render_theory_panel(result: Dict[str, Any]) -> None:
 
 	c1, c2, c3 = st.columns(3)
 	c1.metric("Confidence", str(model["confidence"]))
-	c2.metric("Uses TTM", str(model["uses_ttm"]))
-	c3.metric("TTM structure file", str(theory.get("ttm_structure_file_exists", False)))
+	c2.metric("Uses TTM", format_tristate(model["uses_ttm"]))
+	c3.metric("TTM structure file", format_tristate(theory.get("ttm_structure_file_exists")))
 
 	with st.expander("Theory details", expanded=False):
 		st.markdown(_build_theory_summary_markdown(result))
@@ -888,12 +991,12 @@ def render_theory_panel(result: Dict[str, Any]) -> None:
 				st.markdown(f"- **{stage}**: {note}")
 
 
-def render_point_gatekeeping_panel(result: Dict[str, Any]) -> None:
+def render_point_gatekeeping_panel(result: Dict[str, Any], compact: bool = False) -> None:
 	model = build_point_status_model(result)
 	if not model["has_point_analysis"]:
 		return
 
-	st.subheader("Point & gatekeeping findings")
+	_render_panel_heading("Point & gatekeeping findings", compact=compact)
 
 	if model["status"] == "not_applicable":
 		st.info(model["summary_message"])
@@ -1124,7 +1227,7 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
     if not fixer:
         return
 
-    st.subheader("Fix proposals")
+    st.markdown("### Fix proposals")
 
     raw_count = fixer.get("proposal_count", 0)
     path = fixer.get("proposals_path")
@@ -1163,7 +1266,7 @@ def render_fix_proposals_panel(result: Dict[str, Any]) -> None:
     c5.metric("Rejected", status_counts.get("rejected", 0))
 
     if priority_count > 0:
-        st.info(f"**{priority_count}** proposal group(s) are marked as higher-priority review targets.")
+        st.info(f"{priority_count} proposal group(s) are marked as higher-priority review targets.")
 
     if path:
         st.caption(f"Saved proposal artifact: {path}")

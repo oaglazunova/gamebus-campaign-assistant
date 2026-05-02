@@ -18,6 +18,9 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
             "proposal_count": 0,
             "readiness_status": "unknown",
             "top_actions": [],
+            "selected_checks": [],
+            "source_mode": None,
+            "source_label": None,
         }
 
     assistant_meta = dict(result.get("assistant_meta", {}) or {})
@@ -29,6 +32,7 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
     failed_checks = list(summary.get("failed_checks", []) or [])
     errored_checks = list(summary.get("errored_checks", []) or [])
     proposal_count = int(fix_proposals.get("proposal_count", 0) or 0)
+    selected_checks = list(assistant_meta.get("selected_checks", []) or [])
 
     if not readiness:
         readiness_status = "unknown"
@@ -51,8 +55,8 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
     if readiness_status == "needs_annotations":
         top_actions.append(
             {
-                "label": "Annotate task roles",
-                "focus": "task_roles",
+                "label": "Open Setup",
+                "focus": "Setup",
                 "kind": "setup",
             }
         )
@@ -60,8 +64,8 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
     if total_issues > 0:
         top_actions.append(
             {
-                "label": "Review findings",
-                "focus": "findings",
+                "label": "Review Findings",
+                "focus": "Findings",
                 "kind": "review",
             }
         )
@@ -69,11 +73,19 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
     if proposal_count > 0:
         top_actions.append(
             {
-                "label": "Review proposed fixes",
-                "focus": "fixes",
+                "label": "Review Fixes",
+                "focus": "Fixes",
                 "kind": "fixes",
             }
         )
+
+    top_actions.append(
+        {
+            "label": "Ask Assistant",
+            "focus": "Assistant",
+            "kind": "assistant",
+        }
+    )
 
     return {
         "has_result": True,
@@ -86,6 +98,9 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
         "proposal_count": proposal_count,
         "readiness_status": readiness_status,
         "top_actions": top_actions,
+        "selected_checks": selected_checks,
+        "source_mode": assistant_meta.get("source_mode"),
+        "source_label": assistant_meta.get("source_label"),
     }
 
 
@@ -105,11 +120,15 @@ def _status_message(model: dict[str, Any]) -> tuple[str, str]:
 
 
 def _apply_overview_action(action: dict[str, str], request_id: str | None) -> None:
-    if not request_id:
-        return
-
     focus = str(action.get("focus") or "").strip()
     if not focus:
+        return
+
+    if focus in {"Overview", "Setup", "Findings", "Fixes", "Assistant"}:
+        st.session_state["main_workflow_page"] = focus
+        st.rerun()
+
+    if not request_id:
         return
 
     if focus in {"task_roles", "profile", "theory", "override"}:
@@ -140,16 +159,21 @@ def render_analysis_overview(result: dict[str, Any] | None) -> None:
     else:
         st.info(msg_text)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Issues", model["total_issues"])
-    col2.metric("Failed checks", len(model["failed_checks"]))
-    col3.metric("Errored checks", len(model["errored_checks"]))
-    col4.metric("Proposed fixes", model["proposal_count"])
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Issues", model["total_issues"])
+    c2.metric("Failed checks", len(model["failed_checks"]))
+    c3.metric("Errored checks", len(model["errored_checks"]))
+    c4.metric("Proposed fixes", model["proposal_count"])
 
-    if model["workspace_id"]:
-        st.caption(f"Workspace: {model['workspace_id']}")
-    if model["snapshot_id"]:
-        st.caption(f"Snapshot: {model['snapshot_id']}")
+    meta_left, meta_right = st.columns(2)
+    with meta_left:
+        if model["workspace_id"]:
+            st.caption(f"Workspace: {model['workspace_id']}")
+        if model["snapshot_id"]:
+            st.caption(f"Snapshot: {model['snapshot_id']}")
+    with meta_right:
+        if model["selected_checks"]:
+            st.caption(f"Selected checks: {', '.join(f'`{x}`' for x in model['selected_checks'])}")
 
     if model["failed_checks"]:
         st.markdown("**Failed checks**")

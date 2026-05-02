@@ -33,7 +33,15 @@ def test_overview_model_marks_readiness_gap():
     assert model["has_result"] is True
     assert model["status"] == "issues_found"
     assert model["readiness_status"] == "needs_annotations"
-    assert any(action["focus"] == "task_roles" for action in model["top_actions"])
+
+    labels = [action["label"] for action in model["top_actions"]]
+    focuses = [action["focus"] for action in model["top_actions"]]
+
+    assert "Open Setup" in labels
+    assert "Setup" in focuses
+    assert "Review Findings" in labels
+    assert "Review Fixes" in labels
+    assert "Ask Assistant" in labels
 
 
 def test_overview_model_marks_clean():

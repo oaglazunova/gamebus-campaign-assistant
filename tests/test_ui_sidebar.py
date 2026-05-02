@@ -39,10 +39,9 @@ def test_render_sidebar_download_button_state():
         ]
         assert len(disabled_button_calls) == 1
         assert disabled_button_calls[0].kwargs.get("disabled") is True
+        
 
-        # 2. Result exists, issues found, file exists: Download button should be active
-        mock_st.button.reset_mock()
-        mock_st.download_button.reset_mock()
+
         
         result = {
             "excel_report_path": "dummy.xlsx",
