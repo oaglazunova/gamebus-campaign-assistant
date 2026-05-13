@@ -1,7 +1,7 @@
 from campaign_assistant.ui.overview import build_analysis_overview_model
 
 
-def test_overview_model_exposes_workflow_actions():
+def test_overview_model_exposes_core_overview_fields():
     model = build_analysis_overview_model(
         {
             "summary": {
@@ -24,9 +24,11 @@ def test_overview_model_exposes_workflow_actions():
         }
     )
 
-    labels = [x["label"] for x in model["top_actions"]]
-
-    assert "Open Setup" in labels
-    assert "Review Findings" in labels
-    assert "Review Fixes" in labels
-    assert "Ask Assistant" in labels
+    assert model["has_result"] is True
+    assert model["status"] == "issues_found"
+    assert model["workspace_id"] == "ws-1"
+    assert model["snapshot_id"] == "snap-1"
+    assert model["selected_checks"] == ["reachability", "secrets"]
+    assert model["proposal_count"] == 2
+    assert model["readiness_status"] == "needs_annotations"
+    assert "top_actions" not in model

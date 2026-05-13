@@ -17,7 +17,6 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
             "errored_checks": [],
             "proposal_count": 0,
             "readiness_status": "unknown",
-            "top_actions": [],
             "selected_checks": [],
             "source_mode": None,
             "source_label": None,
@@ -50,43 +49,6 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
     else:
         status = "clean"
 
-    top_actions: list[dict[str, str]] = []
-
-    if readiness_status == "needs_annotations":
-        top_actions.append(
-            {
-                "label": "Open Setup",
-                "focus": "Setup",
-                "kind": "setup",
-            }
-        )
-
-    if total_issues > 0:
-        top_actions.append(
-            {
-                "label": "Review Findings",
-                "focus": "Findings",
-                "kind": "review",
-            }
-        )
-
-    if proposal_count > 0:
-        top_actions.append(
-            {
-                "label": "Review Fixes",
-                "focus": "Fixes",
-                "kind": "fixes",
-            }
-        )
-
-    top_actions.append(
-        {
-            "label": "Ask Assistant",
-            "focus": "Assistant",
-            "kind": "assistant",
-        }
-    )
-
     return {
         "has_result": True,
         "status": status,
@@ -97,7 +59,6 @@ def build_analysis_overview_model(result: dict[str, Any] | None) -> dict[str, An
         "errored_checks": errored_checks,
         "proposal_count": proposal_count,
         "readiness_status": readiness_status,
-        "top_actions": top_actions,
         "selected_checks": selected_checks,
         "source_mode": assistant_meta.get("source_mode"),
         "source_label": assistant_meta.get("source_label"),
@@ -119,35 +80,17 @@ def _status_message(model: dict[str, Any]) -> tuple[str, str]:
     return "info", "Analysis state is available."
 
 
-def _apply_overview_action(action: dict[str, str], request_id: str | None) -> None:
-    focus = str(action.get("focus") or "").strip()
-    if not focus:
-        return
-
-    if focus in {"Overview", "Setup", "Findings", "Fixes", "Assistant"}:
-        st.session_state["main_workflow_page"] = focus
-        st.rerun()
-
-    if not request_id:
-        return
-
-    if focus in {"task_roles", "profile", "theory", "override"}:
-        st.session_state[f"campaign-setup-focus-{request_id}"] = focus
-    else:
-        st.session_state[f"campaign-main-focus-{request_id}"] = focus
-
-    st.rerun()
-
-
-def render_analysis_overview(result: dict[str, Any] | None) -> None:
+def render_analysis_overview(
+    result: dict[str, Any] | None,
+    *,
+    show_title: bool = True,
+) -> None:
     model = build_analysis_overview_model(result)
     if not model["has_result"]:
         return
 
-    assistant_meta = dict((result or {}).get("assistant_meta", {}) or {})
-    request_id = assistant_meta.get("request_id")
-
-    st.markdown("## Overview")
+    if show_title:
+        st.markdown("## Overview")
 
     msg_type, msg_text = _status_message(model)
     if msg_type == "error":
@@ -182,11 +125,3 @@ def render_analysis_overview(result: dict[str, Any] | None) -> None:
     if model["errored_checks"]:
         st.markdown("**Errored checks**")
         st.write(", ".join(f"`{name}`" for name in model["errored_checks"]))
-
-    if model["top_actions"]:
-        st.markdown("**Next actions**")
-        action_cols = st.columns(len(model["top_actions"]))
-        for col, action in zip(action_cols, model["top_actions"]):
-            with col:
-                if st.button(action["label"], key=f"overview-action-{action['label']}"):
-                    _apply_overview_action(action, request_id)

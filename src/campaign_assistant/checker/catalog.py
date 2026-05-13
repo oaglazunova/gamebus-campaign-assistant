@@ -112,6 +112,14 @@ _CHECK_CATALOG: list[CheckDefinition] = [
 ]
 
 
+def _validator_applicability(capability_summary: dict[str, Any] | None) -> dict[str, bool]:
+    return dict((capability_summary or {}).get("validator_applicability", {}) or {})
+
+
+def _validator_reasons(capability_summary: dict[str, Any] | None) -> dict[str, str]:
+    return dict((capability_summary or {}).get("validator_reasons", {}) or {})
+
+
 def build_check_catalog() -> list[CheckDefinition]:
     return list(_CHECK_CATALOG)
 
@@ -220,6 +228,16 @@ def resolve_check_availability(
 
         if definition.group == CHECK_GROUP_CONFIG:
             enabled, reason = _is_progression_applicable(capability_summary)
+            if definition.check_id == TARGETPOINTSREACHABLE:
+                validator_applicability = _validator_applicability(capability_summary)
+                validator_reasons = _validator_reasons(capability_summary)
+                if TARGETPOINTSREACHABLE in validator_applicability:
+                    enabled = bool(validator_applicability[TARGETPOINTSREACHABLE])
+                    reason = validator_reasons.get(TARGETPOINTSREACHABLE) or (
+                        "Enabled because the workbook supports target-points reachability."
+                        if enabled
+                        else "Disabled because the workbook does not support target-points reachability."
+                    )
             items.append(
                 CheckAvailability(
                     check_id=definition.check_id,

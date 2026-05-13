@@ -32,6 +32,8 @@ st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", la
 _WORKFLOW_PAGES = ["Overview", "Setup", "Findings", "Fixes", "Assistant"]
 
 
+
+
 def _render_page_intro(title: str, description: str) -> None:
 	st.markdown(f"## {title}")
 	st.caption(description)
@@ -103,6 +105,8 @@ def _handle_run(sidebar: dict, logger) -> None:
 					"file_name": uploaded_file.name,
 				}
 
+				st.session_state["last_analyzed_source_signature"] = f"upload:{file_hash}"
+
 				run_analysis(
 					file_path=file_path,
 					selected_checks=sidebar["selected_checks"],
@@ -162,6 +166,8 @@ def _handle_run(sidebar: dict, logger) -> None:
 					"file_name": file_path.name,
 					"auto_refreshed": False,
 				}
+
+				st.session_state["last_analyzed_source_signature"] = f"download:{campaign_abbreviation.lower()}"
 
 				run_analysis(
 					file_path=file_path,
@@ -229,6 +235,11 @@ def _handle_current_snapshot_rerun(sidebar: dict, logger) -> None:
 		},
 	)
 
+	if st.session_state.get("last_source_info", {}).get("mode") == "download":
+		campaign_abbreviation = st.session_state.get("last_source_info", {}).get("campaign_abbreviation", "")
+		if campaign_abbreviation:
+			st.session_state["last_analyzed_source_signature"] = f"download:{campaign_abbreviation.lower()}"
+
 	run_analysis(
 		file_path=file_path,
 		selected_checks=sidebar["selected_checks"],
@@ -273,6 +284,8 @@ def _handle_generated_draft_reload(sidebar: dict, logger) -> None:
 			"selected_checks": sidebar["selected_checks"],
 		},
 	)
+
+	st.session_state["last_analyzed_source_signature"] = f"patched_draft:{file_path.name}"
 
 	run_analysis(
 		file_path=file_path,
@@ -330,31 +343,8 @@ def _render_overview_page(result) -> None:
 		_render_empty_workflow_state("Overview")
 		return
 
-	render_analysis_overview(result)
+	render_analysis_overview(result, show_title=False)
 	render_capability_panel(result)
-
-	st.markdown("### Next step")
-	col1, col2, col3, col4 = st.columns(4)
-
-	with col1:
-		if st.button(WORKFLOW_PAGE_COPY["Setup"]["open_label"], key="overview-go-setup", use_container_width=True):
-			st.session_state["main_workflow_page"] = "Setup"
-			st.rerun()
-
-	with col2:
-		if st.button(WORKFLOW_PAGE_COPY["Findings"]["open_label"], key="overview-go-findings", use_container_width=True):
-			st.session_state["main_workflow_page"] = "Findings"
-			st.rerun()
-
-	with col3:
-		if st.button(WORKFLOW_PAGE_COPY["Fixes"]["open_label"], key="overview-go-fixes", use_container_width=True):
-			st.session_state["main_workflow_page"] = "Fixes"
-			st.rerun()
-
-	with col4:
-		if st.button(WORKFLOW_PAGE_COPY["Assistant"]["open_label"], key="overview-go-assistant", use_container_width=True):
-			st.session_state["main_workflow_page"] = "Assistant"
-			st.rerun()
 
 
 def _render_setup_page(result) -> None:

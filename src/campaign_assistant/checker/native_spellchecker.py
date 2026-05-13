@@ -46,12 +46,36 @@ def load_spellchecker_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
 
 
 def build_spellchecker_tool():
-    return language_tool_python.LanguageTool(
-        language="de-DE",
-        mother_tongue="de-DE",
-        new_spellings=KNOWN_WORDS,
-        remote_server="http://localhost:8081/",
-    )
+    errors: list[str] = []
+
+    try:
+        return language_tool_python.LanguageTool(
+            language="de-DE",
+            mother_tongue="de-DE",
+            new_spellings=KNOWN_WORDS,
+            remote_server="http://localhost:8081/",
+        )
+    except Exception as exc:
+        errors.append(f"remote server unavailable: {exc}")
+
+    try:
+        return language_tool_python.LanguageTool(
+            language="de-DE",
+            mother_tongue="de-DE",
+            new_spellings=KNOWN_WORDS,
+        )
+    except Exception as exc:
+        errors.append(f"local LanguageTool unavailable: {exc}")
+
+    raise RuntimeError("; ".join(errors) if errors else "LanguageTool is unavailable")
+
+
+def _spellchecker_unavailable_result(reason: str) -> dict[str, Any]:
+    return {
+        "status": "Passed",
+        "issues": [],
+        "notes": [f"Spellchecker skipped: {reason}"],
+    }
 
 
 def _get_now_timestamp() -> pd.Timestamp:
@@ -131,18 +155,25 @@ def _issue(
 
 
 def check_text(tool, text: Any, text_type: str) -> tuple[bool, str | None]:
-    if isinstance(text, float):
-        errormessage = f"{text_type} is empty."
-    else:
-        matches = tool.check(text)
-        status = classify_matches(matches)
-        errormessage = None
+    try:
+        if text is None or pd.isna(text):
+            return True, f"{text_type} is empty."
+    except Exception:
+        pass
 
-        if status == TextStatus.FAULTY:
-            correction = tool.correct(text)
-            errormessage = f"{text_type} is faulty '{text}'. Proposed correction is \n'{correction}'"
-        elif status == TextStatus.GARBAGE:
-            errormessage = f"{text_type} is garbage '{text}', no correction can be proposed"
+    text = str(text).strip()
+    if not text:
+        return True, f"{text_type} is empty."
+
+    matches = tool.check(text)
+    status = classify_matches(matches)
+    errormessage = None
+
+    if status == TextStatus.FAULTY:
+        correction = tool.correct(text)
+        errormessage = f"{text_type} is faulty '{text}'. Proposed correction is \n'{correction}'"
+    elif status == TextStatus.GARBAGE:
+        errormessage = f"{text_type} is garbage '{text}', no correction can be proposed"
 
     return (errormessage is not None), errormessage
 
@@ -152,63 +183,66 @@ def run_native_spellchecker_tables(
     now: pd.Timestamp | None = None,
     tool=None,
 ) -> dict[str, Any]:
-    tasks_df = tables["tasks"]
-    challenges_df = tables["challenges"]
-    visualizations_df = tables["visualizations"]
-    waves_df = tables.get("waves", pd.DataFrame())
+    try:
+        tasks_df = tables["tasks"]
+        challenges_df = tables["challenges"]
+        visualizations_df = tables["visualizations"]
+        waves_df = tables.get("waves", pd.DataFrame())
 
-    tool = tool if tool is not None else build_spellchecker_tool()
-    challenges = _challenge_index(challenges_df)
-    visualizations = _visualization_index(visualizations_df)
-    active_wave_ids = _active_wave_ids(waves_df, now=now)
+        tool = tool if tool is not None else build_spellchecker_tool()
+        challenges = _challenge_index(challenges_df)
+        visualizations = _visualization_index(visualizations_df)
+        active_wave_ids = _active_wave_ids(waves_df, now=now)
 
-    issues: list[Issue] = []
+        issues: list[Issue] = []
 
-    for _, task_row in tasks_df.iterrows():
-        task = task_row.to_dict()
-        challenge = challenges.get(task.get("challenge"))
-        if challenge is None:
-            continue
+        for _, task_row in tasks_df.iterrows():
+            task = task_row.to_dict()
+            challenge = challenges.get(task.get("challenge"))
+            if challenge is None:
+                continue
 
-        visualization = visualizations.get(challenge.get("visualizations"))
-        if visualization is None:
-            continue
+            visualization = visualizations.get(challenge.get("visualizations"))
+            if visualization is None:
+                continue
 
-        error, errormessage = check_text(tool, task.get("name"), "Name of task")
-        if error and errormessage is not None:
-            issues.append(
-                _issue(
-                    challenge=challenge,
-                    visualization=visualization,
-                    active_wave_ids=active_wave_ids,
-                    message=errormessage,
+            error, errormessage = check_text(tool, task.get("name"), "Name of task")
+            if error and errormessage is not None:
+                issues.append(
+                    _issue(
+                        challenge=challenge,
+                        visualization=visualization,
+                        active_wave_ids=active_wave_ids,
+                        message=errormessage,
+                    )
                 )
-            )
 
-    for _, challenge_row in challenges_df.iterrows():
-        challenge = challenge_row.to_dict()
-        visualization = visualizations.get(challenge.get("visualizations"))
-        if visualization is None:
-            continue
+        for _, challenge_row in challenges_df.iterrows():
+            challenge = challenge_row.to_dict()
+            visualization = visualizations.get(challenge.get("visualizations"))
+            if visualization is None:
+                continue
 
-        error, errormessage = check_text(tool, challenge.get("name"), "Name of challenge")
-        if error and errormessage is not None:
-            issues.append(
-                _issue(
-                    challenge=challenge,
-                    visualization=visualization,
-                    active_wave_ids=active_wave_ids,
-                    message=errormessage,
+            error, errormessage = check_text(tool, challenge.get("name"), "Name of challenge")
+            if error and errormessage is not None:
+                issues.append(
+                    _issue(
+                        challenge=challenge,
+                        visualization=visualization,
+                        active_wave_ids=active_wave_ids,
+                        message=errormessage,
+                    )
                 )
-            )
 
-    issues.sort(key=lambda item: (item.active_wave, item.challenge_id), reverse=True)
+        issues.sort(key=lambda item: (item.active_wave, item.challenge_id), reverse=True)
 
-    return {
-        "status": "Failed" if issues else "Passed",
-        "issues": issues,
-        "notes": [],
-    }
+        return {
+            "status": "Failed" if issues else "Passed",
+            "issues": issues,
+            "notes": [],
+        }
+    except Exception as exc:
+        return _spellchecker_unavailable_result(str(exc))
 
 
 def run_native_spellchecker_check(

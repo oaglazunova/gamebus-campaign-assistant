@@ -1,13 +1,6 @@
 from campaign_assistant.ui.overview import build_analysis_overview_model
 
 
-def test_overview_model_handles_empty_result():
-    model = build_analysis_overview_model(None)
-
-    assert model["has_result"] is False
-    assert model["status"] == "empty"
-
-
 def test_overview_model_marks_readiness_gap():
     model = build_analysis_overview_model(
         {
@@ -33,18 +26,13 @@ def test_overview_model_marks_readiness_gap():
     assert model["has_result"] is True
     assert model["status"] == "issues_found"
     assert model["readiness_status"] == "needs_annotations"
-
-    labels = [action["label"] for action in model["top_actions"]]
-    focuses = [action["focus"] for action in model["top_actions"]]
-
-    assert "Open Setup" in labels
-    assert "Setup" in focuses
-    assert "Review Findings" in labels
-    assert "Review Fixes" in labels
-    assert "Ask Assistant" in labels
+    assert model["workspace_id"] == "ws-1"
+    assert model["snapshot_id"] == "snap-1"
+    assert model["proposal_count"] == 2
+    assert "top_actions" not in model
 
 
-def test_overview_model_marks_clean():
+def test_overview_model_marks_clean_when_no_issues():
     model = build_analysis_overview_model(
         {
             "summary": {
@@ -56,8 +44,6 @@ def test_overview_model_marks_clean():
                 "proposal_count": 0,
             },
             "assistant_meta": {
-                "workspace_id": "ws-1",
-                "snapshot_id": "snap-1",
                 "workspace_readiness": {
                     "progression_applicable": False,
                     "gatekeeping_semantics_ready": False,
@@ -69,3 +55,14 @@ def test_overview_model_marks_clean():
     assert model["has_result"] is True
     assert model["status"] == "clean"
     assert model["readiness_status"] == "not_applicable"
+    assert "top_actions" not in model
+
+
+def test_overview_model_handles_missing_result():
+    model = build_analysis_overview_model(None)
+
+    assert model["has_result"] is False
+    assert model["status"] == "empty"
+    assert model["failed_checks"] == []
+    assert model["errored_checks"] == []
+    assert "top_actions" not in model
