@@ -6,7 +6,7 @@ from campaign_assistant.agents.capability_resolver import CapabilityResolverAgen
 from campaign_assistant.agents.content_fixer import ContentFixerAgent
 from campaign_assistant.agents.privacy_guardian import PrivacyGuardianAgent
 from campaign_assistant.agents.structural_change import StructuralChangeAgent
-from campaign_assistant.agents.theory_grounding import TheoryGroundingAgent
+from campaign_assistant.agents.ttm_grounding import TTMGroundingAgent
 from campaign_assistant.agents.workspace_readiness import WorkspaceReadinessAgent
 from campaign_assistant.orchestration.models import AgentContext, AgentResponse, AgentTraceEvent
 from campaign_assistant.session_logging import SessionLogger
@@ -24,7 +24,7 @@ class CampaignAnalysisCoordinator:
            -> CapabilityResolver
            -> WorkspaceReadinessAgent
            -> StructuralChangeAgent
-           -> TheoryGroundingAgent
+           -> TTMGroundingAgent
            -> ContentFixerAgent
     """
 
@@ -34,7 +34,7 @@ class CampaignAnalysisCoordinator:
         self.capability_resolver = CapabilityResolverAgent()
         self.workspace_readiness_agent = WorkspaceReadinessAgent()
         self.structural_agent = StructuralChangeAgent()
-        self.theory_agent = TheoryGroundingAgent()
+        self.ttm_grounding_agent = TTMGroundingAgent()
         self.content_fixer_agent = ContentFixerAgent()
 
     def _log_agent_step(self, request_id: str, response: AgentResponse) -> None:
@@ -140,11 +140,11 @@ class CampaignAnalysisCoordinator:
                 context.shared.get("capability_summary", {}),
             )
 
-        theory_response = self.theory_agent.run(context)
-        self._log_agent_step(request_id, theory_response)
-        trace.append(self._trace_event(step=5, response=theory_response))
-        if not theory_response.success:
-            raise RuntimeError(f"Theory grounding agent failed: {theory_response.summary}")
+        ttm_response = self.ttm_grounding_agent.run(context)
+        self._log_agent_step(request_id, ttm_response)
+        trace.append(self._trace_event(step=5, response=ttm_response))
+        if not ttm_response.success:
+            raise RuntimeError(f"TTM grounding agent failed: {ttm_response.summary}")
 
         fixer_response = self.content_fixer_agent.run(context)
         self._log_agent_step(request_id, fixer_response)
@@ -153,6 +153,7 @@ class CampaignAnalysisCoordinator:
             raise RuntimeError(f"Content/fixer agent failed: {fixer_response.summary}")
 
         result = context.shared["result"]
+        result["ttm_grounding"] = context.shared.get("ttm_grounding", {})
         result["theory_grounding"] = context.shared.get("theory_grounding", {})
         result["fix_proposals"] = context.shared.get("fix_proposals", {})
 
@@ -193,7 +194,7 @@ class CampaignAnalysisCoordinator:
                     "snapshot_id": workspace.snapshot_id,
                     "agents_run": assistant_meta["agents_run"],
                     "total_issues": result.get("summary", {}).get("total_issues", 0),
-                    "theory_confidence": result.get("theory_grounding", {}).get("confidence"),
+                    "ttm_confidence": result.get("ttm_grounding", {}).get("confidence"),
                     "proposal_count": result.get("fix_proposals", {}).get("proposal_count", 0),
                 },
             )

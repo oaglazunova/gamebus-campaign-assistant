@@ -25,6 +25,8 @@ class PrivacyService:
     """
 
     SEMANTIC_AGENTS_REQUIRING_VIEWS = {
+        "ttm_grounding_agent",
+        # Compatibility alias kept while old tests/UI helpers migrate.
         "theory_grounding_agent",
         "content_fixer_agent",
     }
@@ -218,7 +220,7 @@ class PrivacyService:
 
         metadata_bundle = context.shared.get("metadata_bundle")
         if "metadata_bundle" in allowed_context_keys:
-            if agent_name in {"theory_grounding_agent", "content_fixer_agent"}:
+            if agent_name in self.SEMANTIC_AGENTS_REQUIRING_VIEWS:
                 view["metadata_summary"] = self._summarize_metadata_bundle(metadata_bundle)
             else:
                 view["metadata_bundle"] = metadata_bundle
@@ -230,8 +232,13 @@ class PrivacyService:
                 result=context.shared.get("result", {}) or {},
             )
 
+        if "ttm_grounding" in allowed_context_keys:
+            view["ttm_grounding"] = dict(context.shared.get("ttm_grounding", {}) or {})
+
         if "theory_grounding" in allowed_context_keys:
-            view["theory_grounding"] = dict(context.shared.get("theory_grounding", {}) or {})
+            view["theory_grounding"] = dict(
+                context.shared.get("theory_grounding") or context.shared.get("ttm_grounding", {}) or {}
+            )
 
         agent_views = context.shared.setdefault("agent_views", {})
         agent_views[agent_name] = view
@@ -254,7 +261,7 @@ class PrivacyService:
                 "redactions": list(policy.get("redactions", [])),
                 "policy_source": policy.get("policy_source", "baseline"),
                 "metadata_mode": "summary_only"
-                if agent_name in {"theory_grounding_agent", "content_fixer_agent"}
+                if agent_name in self.SEMANTIC_AGENTS_REQUIRING_VIEWS
                 else "raw_plus_summary",
             },
         )
@@ -632,10 +639,7 @@ class PrivacyService:
             return "theory_reference"
 
         if asset_info.get("asset_type") in {"metadata_sidecar", "task_role_sidecar"}:
-            return "metadata_summary" if agent_name in {
-                "theory_grounding_agent",
-                "content_fixer_agent",
-            } else "metadata_raw"
+            return "metadata_summary" if agent_name in self.SEMANTIC_AGENTS_REQUIRING_VIEWS else "metadata_raw"
 
         return "derived_scope"
 
@@ -649,7 +653,7 @@ class PrivacyService:
         if not isinstance(result, dict):
             return {}
 
-        if agent_name in {"theory_grounding_agent", "content_fixer_agent"}:
+        if agent_name in self.SEMANTIC_AGENTS_REQUIRING_VIEWS:
             return {
                 "summary": dict(result.get("summary", {}) or {}),
                 "issues_by_check": dict(result.get("issues_by_check", {}) or {}),
@@ -846,6 +850,20 @@ class PrivacyService:
                 rationale="Structural validation is deterministic and runs on raw workbook data.",
                 policy_source="baseline",
             ),
+            "ttm_grounding_agent": AgentPrivacyPolicy(
+                agent_name="ttm_grounding_agent",
+                allowed_asset_ids=metadata_assets + theory_assets,
+                allowed_paths=_paths(metadata_assets + theory_assets),
+                allow_raw_workbook=False,
+                allowed_context_keys=["analysis_profile", "result", "capability_summary", "metadata_bundle"],
+                redactions=[
+                    "no_raw_campaign_workbook",
+                    "prefer_summaries_over_raw_rows",
+                    "metadata_summary_only",
+                ],
+                rationale="TTM grounding should use metadata summaries, findings, and TTM theory sources, not raw workbook rows.",
+                policy_source="baseline",
+            ),
             "theory_grounding_agent": AgentPrivacyPolicy(
                 agent_name="theory_grounding_agent",
                 allowed_asset_ids=metadata_assets + theory_assets,
@@ -857,7 +875,7 @@ class PrivacyService:
                     "prefer_summaries_over_raw_rows",
                     "metadata_summary_only",
                 ],
-                rationale="Theory grounding should use metadata summaries, findings, and theory sources, not raw workbook rows.",
+                rationale="Compatibility alias for the Release-2 TTM grounding policy.",
                 policy_source="baseline",
             ),
             "content_fixer_agent": AgentPrivacyPolicy(
@@ -865,7 +883,7 @@ class PrivacyService:
                 allowed_asset_ids=metadata_assets,
                 allowed_paths=_paths(metadata_assets),
                 allow_raw_workbook=False,
-                allowed_context_keys=["analysis_profile", "result", "theory_grounding", "capability_summary", "metadata_bundle"],
+                allowed_context_keys=["analysis_profile", "result", "ttm_grounding", "theory_grounding", "capability_summary", "metadata_bundle"],
                 redactions=[
                     "no_raw_campaign_workbook",
                     "no_participant_identifiers",

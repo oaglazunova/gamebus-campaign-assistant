@@ -129,7 +129,7 @@ class ContentFixerAgent(BaseAgent):
         analysis_profile = agent_view.get("analysis_profile", {})
         capability_summary = agent_view.get("capability_summary", {})
         structural_result = agent_view.get("result", {})
-        theory_grounding = agent_view.get("theory_grounding", {})
+        theory_grounding = agent_view.get("ttm_grounding") or agent_view.get("theory_grounding", {})
         metadata_summary = agent_view.get("metadata_summary", {})
 
         checking_scope = (analysis_profile or {}).get("checking_scope", {})
