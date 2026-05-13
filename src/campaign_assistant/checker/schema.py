@@ -13,32 +13,36 @@ SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
 TTMSTRUCTURE = "ttm"
 
+# Release 2 taxonomy
 UNIVERSAL_CHECKS = [
-    REACHABILITY,
-    CONSISTENCY,
-    VISUALIZATIONINTERN,
     SECRETS,
     SPELLCHECKER,
 ]
 
 CAPABILITY_GATED_CHECKS = [
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
     GATEKEEPINGSEMANTICS,
 ]
 
+# Backward-compatible name kept for existing imports/tests.
 FAMILY_SPECIFIC_CHECKS = [
     TTMSTRUCTURE,
 ]
 
-# Checks shown/used in the normal app flow
-# Keep the new gatekeeping semantics check out of the flat UI for one step.
-# We will expose it when the grouped/disabled check UI is introduced.
+# Checks shown/used in the normal app flow.
+# Gatekeeping semantics stays visible in the grouped picker but is not auto-selected.
 DEFAULT_CHECKS = [
     *UNIVERSAL_CHECKS,
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
 ]
 
-# Complete list including hidden future/current non-default checks and legacy checks
+# Complete list including non-default and legacy checks.
 ALL_CHECKS = [
     *DEFAULT_CHECKS,
     GATEKEEPINGSEMANTICS,

@@ -9,13 +9,29 @@ from campaign_assistant.checker.native_targetpointsreachable import (
     run_native_targetpointsreachable_check,
 )
 from campaign_assistant.checker.schema import (
+    CONSISTENCY,
     GATEKEEPINGSEMANTICS,
+    REACHABILITY,
+    SECRETS,
+    SPELLCHECKER,
     TARGETPOINTSREACHABLE,
-    UNIVERSAL_CHECKS,
+    VISUALIZATIONINTERN,
 )
 from campaign_assistant.checker.wrapper import run_campaign_checks
 from campaign_assistant.reasoning import PointGatekeepingService
 from campaign_assistant.validators.base import BaseValidator, ValidationContext, ValidationResult
+
+
+UNIVERSAL_STRUCTURAL_CHECKS = [
+    SECRETS,
+    SPELLCHECKER,
+]
+
+CONFIGURATION_GATED_STRUCTURAL_CHECKS = [
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
+]
 
 
 def _selected_subset(selected_checks: list[str], allowed_checks: list[str]) -> list[str]:
@@ -70,28 +86,105 @@ def _validator_applicability(context: ValidationContext) -> dict[str, bool]:
     return dict(summary.get("validator_applicability") or {})
 
 
+def _validator_reasons(context: ValidationContext) -> dict[str, str]:
+    summary = context.capability_summary or {}
+    return dict(summary.get("validator_reasons") or {})
+
+
 def _workspace_readiness(context: ValidationContext) -> dict[str, Any]:
     summary = context.capability_summary or {}
     return dict(summary.get("workspace_readiness") or {})
+
+
+def _capabilities(context: ValidationContext) -> dict[str, Any]:
+    summary = context.capability_summary or {}
+    return dict(summary.get("capabilities") or {})
+
+
+def _is_progression_enabled(context: ValidationContext) -> tuple[bool, str]:
+    capabilities = _capabilities(context)
+    if capabilities.get("uses_progression") is False:
+        return False, "Campaign explicitly does not use progression."
+    if capabilities.get("uses_progression") is True:
+        return True, "Campaign explicitly uses progression."
+    return True, "Progression relevance is not fully confirmed, so configuration-gated checks stay available."
+
+
+def _resolve_enabled_configuration_checks(context: ValidationContext) -> tuple[list[str], list[str]]:
+    selected = _selected_subset(context.selected_checks, CONFIGURATION_GATED_STRUCTURAL_CHECKS)
+    if not selected:
+        return [], []
+
+    applicability = _validator_applicability(context)
+    reasons = _validator_reasons(context)
+    progression_enabled, progression_reason = _is_progression_enabled(context)
+
+    enabled: list[str] = []
+    disabled_reasons: list[str] = []
+
+    for check_name in selected:
+        if check_name in applicability:
+            if bool(applicability[check_name]):
+                enabled.append(check_name)
+            else:
+                disabled_reasons.append(
+                    reasons.get(check_name) or f"{check_name} is disabled by validator_applicability."
+                )
+            continue
+
+        if progression_enabled:
+            enabled.append(check_name)
+        else:
+            disabled_reasons.append(progression_reason)
+
+    return enabled, disabled_reasons
 
 
 class UniversalStructuralValidator(BaseValidator):
     name = "universal_structural"
 
     def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
-        checks = _selected_subset(context.selected_checks, UNIVERSAL_CHECKS)
+        checks = _selected_subset(context.selected_checks, UNIVERSAL_STRUCTURAL_CHECKS)
         if not checks:
             return False, "No universal checks were selected."
-        return True, "Universal structural validation is always applicable."
+        return True, "Universal validation is always applicable."
 
     def run(self, context: ValidationContext) -> ValidationResult:
-        checks = _selected_subset(context.selected_checks, UNIVERSAL_CHECKS)
+        checks = _selected_subset(context.selected_checks, UNIVERSAL_STRUCTURAL_CHECKS)
         payload = run_campaign_checks(
             file_path=context.file_path,
             checks=checks,
             export_excel=context.export_excel,
         )
         return ValidationResult(validator_name=self.name, success=True, payload=payload)
+
+
+class ConfigurationGatedStructuralValidator(BaseValidator):
+    name = "configuration_gated_structural"
+
+    def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
+        checks, disabled_reasons = _resolve_enabled_configuration_checks(context)
+        if checks:
+            return True, "Configuration-gated structural validation is applicable."
+
+        if disabled_reasons:
+            return False, disabled_reasons[0]
+
+        return False, "No configuration-gated structural checks were selected."
+
+    def run(self, context: ValidationContext) -> ValidationResult:
+        checks, disabled_reasons = _resolve_enabled_configuration_checks(context)
+        payload = run_campaign_checks(
+            file_path=context.file_path,
+            checks=checks,
+            export_excel=context.export_excel,
+        )
+        return ValidationResult(
+            validator_name=self.name,
+            success=True,
+            payload=payload,
+            notes=disabled_reasons,
+        )
 
 
 class TargetPointsReachableValidator(BaseValidator):
@@ -102,17 +195,21 @@ class TargetPointsReachableValidator(BaseValidator):
             return False, "Target-points reachability was not selected."
 
         applicability = _validator_applicability(context)
+        reasons = _validator_reasons(context)
         if TARGETPOINTSREACHABLE in applicability:
             enabled = bool(applicability[TARGETPOINTSREACHABLE])
             return enabled, (
-                "Applicability comes from validator_applicability."
-                if enabled
-                else "validator_applicability disabled target-points reachability."
+                reasons.get(TARGETPOINTSREACHABLE)
+                or (
+                    "Applicability comes from validator_applicability."
+                    if enabled
+                    else "validator_applicability disabled target-points reachability."
+                )
             )
 
-        capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        if capabilities.get("uses_progression") is False:
-            return False, "Campaign explicitly does not use progression."
+        progression_enabled, progression_reason = _is_progression_enabled(context)
+        if not progression_enabled:
+            return False, progression_reason
 
         return True, "Target-points reachability is applicable."
 
@@ -136,9 +233,9 @@ class GatekeepingSemanticsValidator(BaseValidator):
         if GATEKEEPINGSEMANTICS not in context.selected_checks:
             return False, "Gatekeeping semantics was not selected."
 
-        capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        if capabilities.get("uses_progression") is False:
-            return False, "Campaign explicitly does not use progression."
+        progression_enabled, progression_reason = _is_progression_enabled(context)
+        if not progression_enabled:
+            return False, progression_reason
 
         readiness = _workspace_readiness(context)
         if not readiness:

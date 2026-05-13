@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from campaign_assistant.legacy import LegacyTTMValidator
 from campaign_assistant.validators.base import BaseValidator, ValidationContext
 from campaign_assistant.validators.packs import (
+    ConfigurationGatedStructuralValidator,
     GatekeepingSemanticsValidator,
     TargetPointsReachableValidator,
     UniversalStructuralValidator,
@@ -25,19 +25,25 @@ class ValidatorRegistry:
         return resolved
 
 
+def _build_legacy_ttm_validator() -> BaseValidator:
+    from campaign_assistant.legacy.validators import LegacyTTMValidator
+    return LegacyTTMValidator()
+
+
 def build_default_validator_registry(*, include_legacy: bool = False) -> ValidatorRegistry:
     registry = ValidatorRegistry()
     registry.register(UniversalStructuralValidator())
+    registry.register(ConfigurationGatedStructuralValidator())
     registry.register(TargetPointsReachableValidator())
     registry.register(GatekeepingSemanticsValidator())
 
     if include_legacy:
-        registry.register(LegacyTTMValidator())
+        registry.register(_build_legacy_ttm_validator())
 
     return registry
 
 
 def build_legacy_validator_registry() -> ValidatorRegistry:
     registry = ValidatorRegistry()
-    registry.register(LegacyTTMValidator())
+    registry.register(_build_legacy_ttm_validator())
     return registry
