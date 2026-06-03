@@ -7,23 +7,21 @@ WORKFLOW_PAGE_COPY = {
         "empty": "Choose a campaign source and click **Analyze campaign** to begin.",
         "open_label": "Open Overview",
     },
-    "Setup": {
-        "description": "Edit workspace metadata, annotations, and supporting files, then re-run analysis.",
-        "empty": "Analyze a campaign to open workspace setup.",
-        "open_label": "Open Setup",
-    },
     "Findings": {
-        "description": "Start with priorities and detailed issues. Open interpretation only when you need more context.",
+        "description": "Review detected campaign issues, starting with high-priority findings.",
         "empty": "Analyze a campaign to inspect findings.",
         "open_label": "Open Findings",
     },
     "Fixes": {
-        "description": "Review grouped repair proposals, approve what you want, and generate drafts.",
-        "empty": "Analyze a campaign to review fix proposals.",
+        "description": "Review suggested next steps for detected findings.",
+        "empty": "Analyze a campaign to review suggested next steps.",
         "open_label": "Open Fixes",
     },
     "Assistant": {
-        "description": "Ask focused questions about the current analysis or use one of the suggested prompts.",
+        "description": (
+            "Ask one chat assistant about the current campaign analysis, findings, "
+            "possible fixes, or behavior-change theory support."
+        ),
         "empty": "Analyze a campaign to use the assistant.",
         "open_label": "Open Assistant",
     },
@@ -31,13 +29,12 @@ WORKFLOW_PAGE_COPY = {
 
 
 ASSISTANT_FALLBACK_TEXT = (
-    "I can help you with the current workflow. Try one of these prompts:\n\n"
+    "I can help you with the current campaign analysis. Try one of these prompts:\n\n"
     "- `Summarize the issues`\n"
     "- `What should I fix first?`\n"
     "- `Which checks failed?`\n"
-    "- `What setup is missing?`\n"
-    "- `Show point/gatekeeping findings`\n"
-    "- `Show theory grounding`\n"
-    "- `Show fix proposals`\n"
-    "- `What did the agents do?`\n"
+    "- `Explain the highest-priority issue`\n"
+    "- `How can I fix target point issues?`\n"
+    "- `Does this campaign seem aligned with TTM?`\n"
+    "- `How can I make this campaign more COM-B aligned?`\n"
 )

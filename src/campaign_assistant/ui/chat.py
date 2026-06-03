@@ -20,7 +20,6 @@ from campaign_assistant.proposals import (
 	matches_group_focus,
 )
 from campaign_assistant.ui.overview import render_analysis_overview
-from campaign_assistant.ui.workspace_readiness import build_workspace_readiness_model
 from campaign_assistant.ui.labels import format_tristate
 from campaign_assistant.ui.copy import ASSISTANT_FALLBACK_TEXT
 
@@ -862,102 +861,28 @@ def build_point_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
 	}
 
 
-
-
 def build_workspace_status_model(result: Dict[str, Any]) -> Dict[str, Any]:
-	capability = build_capability_status_model(result)
-	readiness = build_workspace_readiness_model(result)
+    """
+    Workspace-readiness support was removed for the paper-release scope.
 
-	if not capability["has_capability_summary"]:
-		return {
-			"has_workspace_status": False,
-			"status": "empty",
-			"message": "No workspace status is available.",
-			"capability": capability,
-			"readiness": readiness,
-		}
-
-	if readiness["has_readiness"]:
-		if readiness["status"] == "not_applicable":
-			status = "not_applicable"
-			message = "This workspace is configured for a campaign where progression-specific semantics checks are not currently applicable."
-		elif readiness["status"] == "needs_annotations":
-			status = "needs_setup"
-			message = "Workspace interpretation is available, but stronger progression semantics checks are still disabled until required task-role annotations are added."
-		else:
-			status = "ready"
-			message = "Workspace interpretation is available and stronger progression semantics checks are ready."
-	else:
-		status = "resolved"
-		message = "Workspace capability resolution completed."
-
-	return {
-		"has_workspace_status": True,
-		"status": status,
-		"message": message,
-		"capability": capability,
-		"readiness": readiness,
-	}
+    Kept temporarily as a no-op for backward compatibility with older UI
+    functions that may still import this helper.
+    """
+    return {
+        "has_workspace_status": False,
+        "status": "removed",
+        "message": "Workspace-readiness support is not part of this release.",
+        "capability": {},
+        "readiness": {},
+    }
 
 
 
 def render_capability_panel(result: Dict[str, Any]) -> None:
-	model = build_workspace_status_model(result)
-	if not model["has_workspace_status"]:
-		return
-
-	capability = model["capability"]
-	readiness = model["readiness"]
-
-	st.subheader("Workspace status")
-
-	if model["status"] == "needs_setup":
-		st.warning(model["message"])
-	elif model["status"] == "not_applicable":
-		st.info(model["message"])
-	else:
-		st.info(model["message"])
-
-	c1, c2, c3, c4 = st.columns(4)
-	c1.metric("Task-role annotations", capability["task_role_count"])
-	c2.metric("Progression", format_tristate(capability["uses_progression"]))
-	c3.metric(
-		"Semantics ready",
-		"Yes" if readiness.get("gatekeeping_semantics_ready") else "No" if readiness.get(
-			"has_readiness") else "Unknown",
-	)
-	c4.metric("TTM", format_tristate(capability["uses_ttm"]))
-
-	setup_hints = capability["setup_hints"]
-	readiness_reasons = readiness.get("reasons", []) if readiness else []
-
-	if setup_hints or readiness_reasons:
-		with st.expander("Setup guidance", expanded=False):
-			for hint in setup_hints:
-				st.markdown(f"- {hint}")
-			for reason in readiness_reasons:
-				st.markdown(f"- {reason}")
-
-	with st.expander("Resolved capabilities", expanded=False):
-		capabilities = capability["capabilities"]
-		sources = capability["sources"]
-		for key, value in capabilities.items():
-			source = sources.get(key, "unknown")
-			st.markdown(f"- **{key}**: `{value}` _(source: {source})_")
-
-	with st.expander("Active reasoning modules", expanded=False):
-		for key, value in capability["active_modules"].items():
-			st.markdown(f"- **{key}**: `{value}`")
-
-	if capability["notes"]:
-		with st.expander("Metadata notes", expanded=False):
-			for note in capability["notes"]:
-				st.markdown(f"- {note}")
-
-	if capability["missing"]:
-		with st.expander("Missing / uncertain metadata", expanded=False):
-			for item in capability["missing"]:
-				st.markdown(f"- {item}")
+    """
+    Capability/workspace-readiness panel removed from the paper-release UI.
+    """
+    return
 
 
 def render_theory_panel(result: Dict[str, Any], compact: bool = False) -> None:

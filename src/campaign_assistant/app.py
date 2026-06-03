@@ -13,7 +13,6 @@ from campaign_assistant.ui.chat import (
 	render_agent_trace_panel,
 	render_assistant_guide_panel,
 	render_assistant_page_status,
-	render_capability_panel,
 	render_findings_overview_panel,
 	render_fix_proposals_panel,
 	render_issues_panel,
@@ -22,14 +21,13 @@ from campaign_assistant.ui.chat import (
 )
 from campaign_assistant.ui.overview import render_analysis_overview
 from campaign_assistant.ui.session import init_state
-from campaign_assistant.ui.setup import render_campaign_setup_panel
 from campaign_assistant.ui.sidebar import render_sidebar
 from campaign_assistant.ui.copy import WORKFLOW_PAGE_COPY
 
 
 st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", layout="wide")
 
-_WORKFLOW_PAGES = ["Overview", "Setup", "Findings", "Fixes", "Assistant"]
+_WORKFLOW_PAGES = ["Overview", "Findings", "Fixes", "Assistant"]
 
 
 
@@ -214,54 +212,6 @@ def _handle_run(sidebar: dict, logger) -> None:
 		st.exception(exc)
 
 
-def _handle_current_snapshot_rerun(sidebar: dict, logger) -> None:
-	payload = st.session_state.pop("rerun_current_snapshot_payload", None)
-	if not payload:
-		return
-
-	file_path = Path(payload["path"])
-	workspace_id = payload.get("workspace_id")
-
-	if not file_path.exists():
-		st.error(f"Snapshot file no longer exists: {file_path}")
-		return
-
-	logger.log(
-		"rerun_current_snapshot_with_workspace_metadata",
-		{
-			"file_path": str(file_path),
-			"workspace_id": workspace_id,
-			"selected_checks": sidebar["selected_checks"],
-		},
-	)
-
-	if st.session_state.get("last_source_info", {}).get("mode") == "download":
-		campaign_abbreviation = st.session_state.get("last_source_info", {}).get("campaign_abbreviation", "")
-		if campaign_abbreviation:
-			st.session_state["last_analyzed_source_signature"] = f"download:{campaign_abbreviation.lower()}"
-
-	run_analysis(
-		file_path=file_path,
-		selected_checks=sidebar["selected_checks"],
-		export_excel=sidebar["export_excel"],
-		logger=logger,
-		workspace_id=workspace_id,
-	)
-
-	if isinstance(st.session_state.get("result"), dict):
-		st.session_state.result.setdefault("assistant_meta", {}).update(
-			{
-				"source_mode": st.session_state.last_source_info.get("mode") if st.session_state.get(
-					"last_source_info") else None,
-				"source_label": (
-					st.session_state.last_source_info.get("file_name")
-					if st.session_state.get("last_source_info")
-					else file_path.name
-				),
-			}
-		)
-
-	st.session_state["main_workflow_page"] = "Overview"
 
 
 def _handle_generated_draft_reload(sidebar: dict, logger) -> None:
@@ -344,17 +294,6 @@ def _render_overview_page(result) -> None:
 		return
 
 	render_analysis_overview(result, show_title=False)
-	render_capability_panel(result)
-
-
-def _render_setup_page(result) -> None:
-	_render_page_intro("Setup", WORKFLOW_PAGE_COPY["Setup"]["description"])
-
-	if not result:
-		_render_empty_workflow_state("Setup")
-		return
-
-	render_campaign_setup_panel(result)
 
 
 def _render_findings_page(result) -> None:
@@ -446,7 +385,6 @@ def main() -> None:
 	sidebar = render_sidebar()
 	_handle_run(sidebar, logger)
 	_handle_generated_draft_reload(sidebar, logger)
-	_handle_current_snapshot_rerun(sidebar, logger)
 
 	_render_source_info()
 
@@ -470,8 +408,6 @@ def main() -> None:
 
 	if selected_page == "Overview":
 		_render_overview_page(result)
-	elif selected_page == "Setup":
-		_render_setup_page(result)
 	elif selected_page == "Findings":
 		_render_findings_page(result)
 	elif selected_page == "Fixes":
