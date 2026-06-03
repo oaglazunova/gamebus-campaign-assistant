@@ -18,7 +18,6 @@ from campaign_assistant.checker.schema import (
     SECRETS,
     SPELLCHECKER,
     TARGETPOINTSREACHABLE,
-    TTMSTRUCTURE,
     VISUALIZATIONINTERN,
     SEVERITY_BY_CHECK,
 )
@@ -28,7 +27,6 @@ from campaign_assistant.checker.native_visualizationintern import run_native_vis
 from campaign_assistant.checker.native_secrets import run_native_secrets_tables
 from campaign_assistant.checker.native_spellchecker import run_native_spellchecker_tables
 from campaign_assistant.checker.native_targetpointsreachable import run_native_targetpointsreachable_tables
-from campaign_assistant.checker.native_ttm import run_native_ttm_tables
 
 
 HERE = Path(__file__).resolve().parent
@@ -58,8 +56,6 @@ def _patch_legacy_checker() -> None:
             CampaignChecker.checkChallengeTargetPointsCanBeReached
         )
 
-    if not hasattr(CampaignChecker, "checkTTMStructure"):
-        CampaignChecker.checkTTMStructure = CampaignChecker.checkTTMstructure
 
     def reachable_challenges_intern(self, challenge, visitedids=None):
         if visitedids is None:
@@ -247,7 +243,6 @@ def run_campaign_checks(
         SECRETS: run_native_secrets_tables,
         SPELLCHECKER: run_native_spellchecker_tables,
         TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
-        TTMSTRUCTURE: run_native_ttm_tables,
     }
 
     for check_name in checks:

@@ -12,15 +12,10 @@ WORKFLOW_PAGE_COPY = {
         "empty": "Analyze a campaign to inspect findings.",
         "open_label": "Open Findings",
     },
-    "Fixes": {
-        "description": "Review suggested next steps for detected findings.",
-        "empty": "Analyze a campaign to review suggested next steps.",
-        "open_label": "Open Fixes",
-    },
     "Assistant": {
         "description": (
             "Ask one chat assistant about the current campaign analysis, findings, "
-            "possible fixes, or behavior-change theory support."
+            "possible improvements, or behavior-change theory support."
         ),
         "empty": "Analyze a campaign to use the assistant.",
         "open_label": "Open Assistant",

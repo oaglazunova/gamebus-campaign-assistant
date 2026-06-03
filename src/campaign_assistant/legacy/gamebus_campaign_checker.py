@@ -30,7 +30,6 @@ REACHABILITY = "reachability"
 TARGETPOINTSREACHABLE = "targetpointsreachable"
 SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
-TTMSTRUCTURE = "ttm"
     
 class CampaignChecker:
     gc:dict = {}
@@ -42,8 +41,7 @@ class CampaignChecker:
         self.gc = self.load_campaign(filename)
         self.errors = {CONSISTENCY:[],VISUALIZATIONINTERN:[],
                         REACHABILITY:[],TARGETPOINTSREACHABLE:[],
-                        SECRETS:[],SPELLCHECKER:[],
-                        TTMSTRUCTURE:[]}
+                        SECRETS:[],SPELLCHECKER:[]}
         if (os.path.dirname(filename)==""):
             dirname = "."
         else: 
@@ -71,7 +69,7 @@ class CampaignChecker:
         for list in content:
             entries = entries + len(content[list])
         if (entries>0):    
-            for kind in [CONSISTENCY,VISUALIZATIONINTERN,REACHABILITY,TARGETPOINTSREACHABLE,SECRETS,SPELLCHECKER,TTMSTRUCTURE]:
+            for kind in [CONSISTENCY,VISUALIZATIONINTERN,REACHABILITY,TARGETPOINTSREACHABLE,SECRETS,SPELLCHECKER]:
                 for localerror in self.errors[kind]:
                     content['Kind'].append(kind)
                     content['Visualization'].append(localerror['visualization']['description'])
@@ -499,59 +497,18 @@ class CampaignChecker:
                 else:
                     self.addError(TARGETPOINTSREACHABLE,
                                 f"Challenge no target points defined ({challenge_target_points}).",vis,c)
-        logging.info(self.checkResult(TARGETPOINTSREACHABLE))    
-
-    """
-    check TTM structure: checking that the way the tasks in a challenge follow the TTM structure
-    
-    """
-
-    def checkTTMstructure(self,norelapselevels=4):
-        assert(norelapselevels>0)
-        logging.info("Checking all visualizations are in TTM structure")
-        for _, vis in self.getVisualizations().iterrows(): 
-                for c in self.getVisualizationInitialChallenges(vis):
-                    self.checkchallengeTTM(vis,c,norelapselevels)
-        logging.info(self.checkResult(TTMSTRUCTURE))  
-                    
-    def checkchallengeTTM(self,vis,c,norelapselevels=0,lastlevel=None):
-        nextlevel = self.getChallengeSuccessChallenge(c)
-        if (norelapselevels>0):
-            # Normal level, check failure level is itself and continue with success level
-            if (not self.challengeEqual(self.getChallengeFailureChallenge(c),c)): # this is only for non final levels. 
-                self.addError(TTMSTRUCTURE, f"Challenge {c['id']} ({c['name']}) should have failure success level to itself.",vis,c)
-            elif (not self.challengeEqual(nextlevel,c)):
-                self.checkchallengeTTM(vis,nextlevel,norelapselevels-1,c)
-            else: 
-                return
-        elif (self.challengeEqual(nextlevel,c)):
-            if (not self.challengeEqual(self.getChallengeFailureChallenge(c),lastlevel)): # this is only for final levels. 
-                self.addError(TTMSTRUCTURE, f"Challenge {c['id']} ({c['name']}) should have failure to previous level {lastlevel['id']} ({lastlevel['name']}) that led to {c['id']} ({c['name']}) as successor level.",vis,c)
-        else:
-            # Relapse Level, check
-            # Challengefailurelevel is a relapse level (not lastlevel)
-            relapselevel = self.getChallengeFailureChallenge(c)
-            relapselevelfailure = self.getChallengeFailureChallenge(relapselevel)
-            relapselevelsuccess = self.getChallengeSuccessChallenge(relapselevel)
-            
-            if (self.challengeEqual(relapselevel,lastlevel)): 
-                self.addError(TTMSTRUCTURE,f"Challenge {c['id']} ({c['name']}): its 'At risk level' {relapselevel['id']} ({relapselevel['name']}) should not be the previous level {lastlevel['id']} ({lastlevel['name']}) in TTM hierarchy. Maybe the error is also from that successor challenge being wrong.",vis,c)
-            if (not self.challengeEqual(relapselevelfailure,lastlevel)):
-                self.addError(TTMSTRUCTURE,f"Challenge {c['id']} ({c['name']}): its 'At risk level' {relapselevel['id']} ({relapselevel['name']}) should have as failure challenge the previous level {lastlevel['id']} ({lastlevel['name']}) in the TTM hierarchy that led to {c['id']} ({c['name']}).",vis,c)
-            if (not self.challengeEqual(relapselevelsuccess,c)):
-                self.addError(TTMSTRUCTURE,f"Challenge {c['id']} ({c['name']}): its 'At risk level' {relapselevel['id']} ({relapselevel['name']}) should have as success challenge the challenge {c['id']} ({c['name']})  again.",vis,c)
-            self.checkchallengeTTM(vis,nextlevel,0,c)
+        logging.info(self.checkResult(TARGETPOINTSREACHABLE))
                 
 
 def main(filename, consistency, visualizationintern, reachability, 
-        targetpointsreachable, secrets, fixsecrets:bool, spellchecker:bool, ttm:bool):
+        targetpointsreachable, secrets, fixsecrets:bool, spellchecker:bool):
     
     logging.info("Version 0.2")
     gc = CampaignChecker(filename)
     fixsecrets = False
     spellchecker = False
     all = not (consistency or visualizationintern or reachability or 
-            targetpointsreachable or secrets or spellchecker or ttm) 
+            targetpointsreachable or secrets or spellchecker)
     if (reachability or all):
         gc.checkInitialAndTerminalReachability()
     if (consistency or all):
@@ -564,8 +521,6 @@ def main(filename, consistency, visualizationintern, reachability,
         gc.checkTasksHaveSecrets(fixsecrets)
     if (spellchecker): # making spellchecker to be explicitely triggered as it is very slow.
         gc.spellcheckTaskAndChallenges()
-    if (ttm or all): 
-        gc.checkTTMstructure()
     gc.errorsToLog()
     gc.errorsToExcel()
     if (fixsecrets):
@@ -606,9 +561,6 @@ if __name__ == "__main__":
     argparser.add_argument("-s",f"--{SECRETS}",action='store_true',
                             help="Checking that the all tasks provided by gamebus Studio have secrets")
     
-    argparser.add_argument("-ttm",f"--{TTMSTRUCTURE}",action='store_true',
-                            help="Checking that the all visualizations have the TTM structure")
-    
     argparser.add_argument("-fs",f"--fix{SECRETS}",action='store_true',
                             help="Fixes empty Secrets and save into campaign file.")
     
@@ -623,5 +575,5 @@ if __name__ == "__main__":
         argparser.print_usage()
     else: 
         main(args.filename, args.consistency, args.visualizationintern, args.reachability, 
-            args.targetpointsreachable,args.secrets,args.fixsecrets,args.spellchecker,args.ttm)
+            args.targetpointsreachable,args.secrets,args.fixsecrets,args.spellchecker)
 

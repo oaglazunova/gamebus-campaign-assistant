@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import streamlit as st
 
 from campaign_assistant.downloader import CampaignDownloadError, download_campaign_xlsx
 from campaign_assistant.file_utils import sha256_file
 from campaign_assistant.storage import add_saved_campaign_abbreviation, get_cookie_file, load_password
 from campaign_assistant.ui.actions import run_analysis, save_uploaded_file
-from campaign_assistant.ui.chat import (
-	answer_question,
-	render_agent_trace_panel,
-	render_assistant_guide_panel,
-	render_assistant_page_status,
-	render_findings_overview_panel,
-	render_fix_proposals_panel,
-	render_issues_panel,
-	render_point_gatekeeping_panel,
-	render_theory_panel,
+from campaign_assistant.ui.assistant_chat import (
+    answer_question,
+    render_agent_trace_panel,
+    render_assistant_guide_panel,
+    render_assistant_page_status,
+)
+from campaign_assistant.ui.findings import (
+    render_findings_overview_panel,
+    render_issues_panel,
 )
 from campaign_assistant.ui.overview import render_analysis_overview
 from campaign_assistant.ui.session import init_state
@@ -27,7 +24,7 @@ from campaign_assistant.ui.copy import WORKFLOW_PAGE_COPY
 
 st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", layout="wide")
 
-_WORKFLOW_PAGES = ["Overview", "Findings", "Fixes", "Assistant"]
+_WORKFLOW_PAGES = ["Overview", "Findings", "Assistant"]
 
 
 
@@ -57,8 +54,6 @@ def _render_source_info() -> None:
 			f"Current campaign source: downloaded for campaign "
 			f"**{source_info['campaign_abbreviation']}**{tag}"
 		)
-	elif mode == "patched_draft":
-		st.info(f"Current campaign source: patched draft **{source_info['file_name']}**")
 
 
 def _handle_run(sidebar: dict, logger) -> None:
@@ -214,52 +209,6 @@ def _handle_run(sidebar: dict, logger) -> None:
 
 
 
-def _handle_generated_draft_reload(sidebar: dict, logger) -> None:
-	payload = st.session_state.pop("reload_generated_draft_payload", None)
-	if not payload:
-		return
-
-	file_path = Path(payload["path"])
-	workspace_id = payload.get("workspace_id")
-
-	if not file_path.exists():
-		st.error(f"Patched draft file no longer exists: {file_path}")
-		return
-
-	logger.log(
-		"reload_generated_draft",
-		{
-			"file_path": str(file_path),
-			"workspace_id": workspace_id,
-			"selected_checks": sidebar["selected_checks"],
-		},
-	)
-
-	st.session_state["last_analyzed_source_signature"] = f"patched_draft:{file_path.name}"
-
-	run_analysis(
-		file_path=file_path,
-		selected_checks=sidebar["selected_checks"],
-		export_excel=sidebar["export_excel"],
-		logger=logger,
-		workspace_id=workspace_id,
-	)
-
-	if isinstance(st.session_state.get("result"), dict):
-		st.session_state.result.setdefault("assistant_meta", {}).update(
-			{
-				"source_mode": "patched_draft",
-				"source_label": file_path.name,
-			}
-		)
-
-	st.session_state.last_source_info = {
-		"mode": "patched_draft",
-		"file_name": file_path.name,
-	}
-	st.session_state["main_workflow_page"] = "Overview"
-
-
 def _sync_main_workflow_focus_from_result(result) -> None:
 	if not result:
 		return
@@ -277,7 +226,6 @@ def _sync_main_workflow_focus_from_result(result) -> None:
 	mapping = {
 		"overview": "Overview",
 		"findings": "Findings",
-		"fixes": "Fixes",
 		"assistant": "Assistant",
 	}
 
@@ -297,30 +245,14 @@ def _render_overview_page(result) -> None:
 
 
 def _render_findings_page(result) -> None:
-	_render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
+    _render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
 
-	if not result:
-		_render_empty_workflow_state("Findings")
-		return
+    if not result:
+        _render_empty_workflow_state("Findings")
+        return
 
-	render_findings_overview_panel(result)
-	render_issues_panel(result, compact=True)
-
-	with st.expander("Theory interpretation", expanded=False):
-		render_theory_panel(result, compact=True)
-
-	with st.expander("Point & gatekeeping interpretation", expanded=False):
-		render_point_gatekeeping_panel(result, compact=True)
-
-
-def _render_fixes_page(result) -> None:
-	_render_page_intro("Fixes", WORKFLOW_PAGE_COPY["Fixes"]["description"])
-
-	if not result:
-		_render_empty_workflow_state("Fixes")
-		return
-
-	render_fix_proposals_panel(result)
+    render_findings_overview_panel(result)
+    render_issues_panel(result)
 
 
 def _handle_pending_assistant_prompt(logger, result) -> None:
@@ -384,7 +316,6 @@ def main() -> None:
 
 	sidebar = render_sidebar()
 	_handle_run(sidebar, logger)
-	_handle_generated_draft_reload(sidebar, logger)
 
 	_render_source_info()
 
@@ -410,8 +341,6 @@ def main() -> None:
 		_render_overview_page(result)
 	elif selected_page == "Findings":
 		_render_findings_page(result)
-	elif selected_page == "Fixes":
-		_render_fixes_page(result)
 	else:
 		_render_assistant_page(logger, show_trace=show_trace)
 
