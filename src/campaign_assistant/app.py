@@ -11,6 +11,7 @@ from campaign_assistant.ui.assistant_chat import (
     render_agent_trace_panel,
     render_assistant_guide_panel,
     render_assistant_page_status,
+    render_llm_status_panel,
     render_prepared_question_panel,
 )
 from campaign_assistant.ui.findings import (
@@ -283,6 +284,7 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 		return
 
 	render_assistant_page_status(result, len(st.session_state.messages))
+	render_llm_status_panel()
 	render_assistant_guide_panel(result)
 
 	control_col1, control_col2 = st.columns([1, 4])
@@ -292,13 +294,17 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 			st.rerun()
 	with control_col2:
 		st.caption(
-			"Use a suggested prompt, ask your own question, or send a prepared question from Findings."
+			"Ask about checker findings, campaign structure, or what to inspect next. "
+			"Finding-specific questions prepared from the Findings page appear near the chat input."
 		)
 
 	_handle_pending_assistant_prompt(logger, result)
 
 	if not st.session_state.messages:
-		st.info("No assistant conversation yet. Use a suggested prompt, a prepared question, or ask your own question.")
+		st.info(
+			"No assistant conversation yet. Use a suggested prompt, send a prepared question "
+			"from Findings, or ask your own question below."
+		)
 	else:
 		st.markdown("### Conversation")
 		for message in st.session_state.messages:
@@ -308,7 +314,7 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 	render_prepared_question_panel()
 
 	user_question = st.chat_input("Ask about this campaign...")
-	
+
 	if user_question:
 		logger.log_chat_user(user_question)
 		st.session_state.messages.append({"role": "user", "content": user_question})

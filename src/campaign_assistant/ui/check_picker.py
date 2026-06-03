@@ -66,12 +66,6 @@ def _clear_all() -> None:
 def render_check_picker(result: dict[str, Any] | None) -> list[str]:
     """
     Render a simple checklist of deterministic export-based checks.
-
-    Paper-release scope:
-    - no capability gating;
-    - no workspace readiness;
-    - no metadata/sidecar setup actions;
-    - no legacy or campaign-family-specific validators.
     """
     selected_checks = _initial_selected_checks(result)
     _ensure_widget_defaults(selected_checks)

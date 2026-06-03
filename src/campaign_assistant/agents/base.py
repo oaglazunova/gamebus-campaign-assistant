@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-
-from campaign_assistant.orchestration.models import AgentContext, AgentResponse
+from typing import Any
 
 
 class BaseAgent(ABC):
+    """
+    Base class for user-triggered assistant agents.
+
+    Agents in the paper-release architecture receive compact context and return
+    text responses. They do not modify campaign files.
+    """
+
     name: str
 
     @abstractmethod
-    def run(self, context: AgentContext) -> AgentResponse:
+    def run(self, *, question: str, context: dict[str, Any]) -> str:
         raise NotImplementedError

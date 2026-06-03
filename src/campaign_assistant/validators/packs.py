@@ -87,13 +87,6 @@ def _checker_payload_from_single_native_result(
 class ExportStructuralValidator(BaseValidator):
     """
     Runs reliable export-based structural checks.
-
-    Paper-release scope:
-    - no metadata;
-    - no sidecars;
-    - no capability gating;
-    - no gatekeeping semantics;
-    - no legacy TTM validator.
     """
 
     name = "export_structural"

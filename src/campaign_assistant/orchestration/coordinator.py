@@ -12,10 +12,8 @@ class CampaignAnalysisCoordinator:
     """
     Coordinator for deterministic campaign analysis.
 
-    Paper-release scope:
-    - automatic analysis runs only export-based deterministic checks;
-    - LLM support will be added later as user-triggered chat support;
-    - no metadata, sidecars, workspace readiness, or patch generation are used here.
+    Automatic analysis runs only export-based deterministic checks.
+    User-triggered LLM support is handled separately by the assistant layer.
     """
 
     def __init__(self, logger: SessionLogger | None = None):

@@ -7,6 +7,9 @@ from campaign_assistant.agents.context_builder import (
     build_llm_context,
     format_llm_context_markdown,
 )
+from campaign_assistant.agents.assistant_coordinator import AssistantCoordinator
+from campaign_assistant.llm import create_llm_client, llm_enabled
+
 
 
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +147,46 @@ def render_assistant_page_status(result: dict[str, Any], message_count: int) -> 
     c3.metric("Checks run", len(checks_run))
 
 
+def render_llm_status_panel() -> None:
+    with st.expander("LLM status", expanded=False):
+        if not llm_enabled():
+            st.info(
+                "LLM support is disabled. The assistant will use deterministic fallback responses."
+            )
+            st.code("CAMPAIGN_ASSISTANT_LLM_ENABLED=false")
+            return
+
+        client = create_llm_client()
+
+        if client is None:
+            st.warning(
+                "LLM support is enabled, but no supported provider is configured."
+            )
+            st.caption(
+                "Supported providers in this release: `ollama`, `mock`."
+            )
+            return
+
+        st.write(f"**Provider:** `{client.provider}`")
+        st.write(f"**Model:** `{client.model}`")
+
+        if client.provider == "ollama":
+            st.caption(
+                "If responses say Ollama is unavailable, make sure Ollama is running "
+                "and that the configured model has been pulled."
+            )
+            st.code(
+                "ollama serve\n"
+                "ollama pull gemma3:1b",
+                language="powershell",
+            )
+
+        if client.provider == "mock":
+            st.caption(
+                "Mock mode is useful for tests. It does not produce real LLM answers."
+            )
+
+
 def render_assistant_guide_panel(result: dict[str, Any]) -> None:
     if not result:
         return
@@ -163,7 +206,7 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
             "What does a clean result mean?",
         ]
 
-    st.caption("Suggested questions")
+    st.caption("Quick questions")
 
     cols = st.columns(min(len(suggestions), 4))
     for idx, suggestion in enumerate(suggestions):
@@ -222,125 +265,36 @@ def render_prepared_question_panel() -> None:
 
 def answer_question(user_question: str, result: dict[str, Any]) -> str:
     if not result:
-        return "No campaign has been analyzed yet. Analyze a campaign first, then ask about the findings."
-
-    q = user_question.strip().lower()
-    total = _total_issues(result)
-    failed_checks = _failed_checks(result)
-    issue_count_by_check = _issue_count_by_check(result)
-    selected_checks = _assistant_meta(result).get("selected_checks", result.get("checks_run", []))
-
-    if any(term in q for term in ["theory", "ttm", "com-b", "comb", "bct", "behaviour", "behavior"]):
         return (
-            "Theory-support chat is not enabled yet in this cleanup phase. "
-            "In the paper-release architecture, this will be handled by the "
-            "**TheorySupportAgent** using Ollama. For now, the available assistant "
-            "support is limited to deterministic checker findings."
+            "No campaign has been analyzed yet. Analyze a campaign first, "
+            "then ask about the findings."
         )
 
+    q = user_question.strip().lower()
+
+    # Developer/debug hook. Keep this typed-only; do not add a visible button.
     if any(term in q for term in ["assistant context", "llm context", "agent context", "prompt context"]):
         context = build_llm_context(result)
         return format_llm_context_markdown(context)
 
-    if any(
-        term in q
-        for term in [
-            "campaign structure",
-            "structure",
-            "how many levels",
-            "how many challenges",
-            "how many tasks",
-            "how many waves",
-            "how many transitions",
-            "levels",
-            "tasks",
-            "waves",
-            "visualizations",
-            "transitions",
-        ]
-    ):
-        return _format_campaign_structure(result)
-
-    if any(term in q for term in ["summary", "summarize", "overview", "what is wrong", "what's wrong"]):
-        lines = [f"The selected checks found **{total}** issue(s)."]
-
-        if selected_checks:
-            lines.append("Checks run: " + ", ".join(f"`{check}`" for check in selected_checks) + ".")
-
-        if failed_checks:
-            lines.append("Checks with findings: " + ", ".join(f"`{check}`" for check in failed_checks) + ".")
-        else:
-            lines.append("No failed checks were reported by the selected validators.")
-
-        if issue_count_by_check:
-            lines.append("\nIssue counts by check:")
-            for check, count in sorted(issue_count_by_check.items(), key=lambda item: item[0]):
-                lines.append(f"- `{check}`: {count}")
-
-        top = _format_top_issues(result)
-        if top:
-            lines.append("\nTop priorities:")
-            lines.append(top)
-
-        return "\n".join(lines)
-
-    if any(term in q for term in ["first", "prioritize", "priority", "fix first", "inspect first", "where start"]):
-        if total == 0:
-            return (
-                "No issues were found by the selected checks. This does not prove the campaign is optimal; "
-                "it only means the selected export-level checks did not detect problems."
-            )
+    try:
+        coordinator = AssistantCoordinator(llm_client=create_llm_client())
+        response = coordinator.answer(
+            question=user_question,
+            result=result,
+        )
 
         return (
-            "Start with the highest-priority findings, because they are most likely to affect deployment "
-            "or participant progression.\n\n"
-            + _format_top_issues(result)
-            + "\n\nUse the Findings page to inspect the corresponding check, row/context, and message."
+            response.text
+            + "\n\n---\n"
+            + f"_Handled by: `{response.agent_name}` · Intent: `{response.intent}`_"
         )
 
-    if any(term in q for term in ["explain", "meaning", "why", "what does", "important"]):
-        top = _top_issues(result, limit=1)
-        if not top:
-            return (
-                "There is no prioritized finding to explain. If the selected checks found no issues, "
-                "the result should be interpreted only as a clean export-level check, not as full campaign validation."
-            )
-
-        issue = top[0]
-        label = _issue_label(issue)
-        location = _issue_location(issue)
-        message = issue.get("message") or issue.get("description") or ""
-
-        lines = [
-            f"The highest-priority finding is: **{label}**.",
-        ]
-
-        if location:
-            lines.append(f"It is located in {location}.")
-
-        if message and str(message) != label:
-            lines.append(f"Checker message: {message}")
-
-        lines.append(
-            "This means you should inspect the relevant campaign configuration in GameBus or in the export. "
-            "The assistant is not modifying the campaign; it is only pointing you to what should be reviewed."
+    except Exception as exc:
+        return (
+            "The assistant could not process this question because an internal error occurred.\n\n"
+            f"Error: `{exc}`"
         )
-
-        return "\n\n".join(lines)
-
-    if any(term in q for term in ["failed", "which checks", "checks failed", "validators"]):
-        if failed_checks:
-            return "Checks with findings: " + ", ".join(f"`{check}`" for check in failed_checks) + "."
-        return "No failed checks were reported by the selected validators."
-
-    return (
-        "I can currently help with deterministic checker results. Try asking:\n\n"
-        "- `Summarize the issues`\n"
-        "- `What should I inspect first?`\n"
-        "- `Explain the highest-priority finding`\n"
-        "- `Which checks failed?`\n\n"
-        "Theory-oriented support will be added later through the Ollama-backed TheorySupportAgent."
-    )
 
 
 def render_agent_trace_panel(result: dict[str, Any], show_trace: bool) -> None:

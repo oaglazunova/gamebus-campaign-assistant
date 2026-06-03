@@ -562,7 +562,7 @@ if __name__ == "__main__":
                             help="Checking that the all tasks provided by gamebus Studio have secrets")
     
     argparser.add_argument("-fs",f"--fix{SECRETS}",action='store_true',
-                            help="Fixes empty Secrets and save into campaign file.")
+                            help="Fills empty Secrets and saves the campaign file.")
     
     argparser.add_argument("-g",f"--{SPELLCHECKER}",action='store_true',
                             help="Spellchecking tasks and challenges names and descriptions")
