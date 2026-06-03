@@ -1,8 +1,12 @@
 ﻿from __future__ import annotations
-
 from typing import Any
 
 import streamlit as st
+
+from campaign_assistant.agents.context_builder import (
+    build_llm_context,
+    format_llm_context_markdown,
+)
 
 
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -11,6 +15,44 @@ def _summary(result: dict[str, Any]) -> dict[str, Any]:
 
 def _assistant_meta(result: dict[str, Any]) -> dict[str, Any]:
     return dict(result.get("assistant_meta", {}) or {})
+
+
+def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
+    snapshot = result.get("campaign_snapshot", {}) or {}
+    return dict(snapshot) if isinstance(snapshot, dict) else {}
+
+
+def _campaign_counts(result: dict[str, Any]) -> dict[str, Any]:
+    snapshot = _campaign_snapshot(result)
+    counts = snapshot.get("counts", {}) or {}
+    return dict(counts) if isinstance(counts, dict) else {}
+
+
+def _format_campaign_structure(result: dict[str, Any]) -> str:
+    snapshot = _campaign_snapshot(result)
+    counts = _campaign_counts(result)
+
+    if not snapshot:
+        return "No campaign structure snapshot is available."
+
+    lines = [
+        "Campaign structure snapshot:",
+        f"- Waves: {counts.get('waves', 0)}",
+        f"- Visualizations: {counts.get('visualizations', 0)}",
+        f"- Challenges/levels: {counts.get('challenges', 0)}",
+        f"- Tasks: {counts.get('tasks', 0)}",
+        f"- Transitions: {counts.get('transitions', 0)}",
+    ]
+
+    warnings = snapshot.get("extraction_warnings", []) or []
+    if warnings:
+        lines.append("")
+        lines.append("Snapshot extraction warnings:")
+        for warning in warnings:
+            lines.append(f"- {warning}")
+
+    return "\n".join(lines)
+
 
 
 def _total_issues(result: dict[str, Any]) -> int:
@@ -108,14 +150,15 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
 
     suggestions = [
         "Summarize the issues",
+        "What is the campaign structure?",
         "What should I inspect first?",
         "Explain the highest-priority finding",
-        "Which checks failed?",
     ]
 
     if _total_issues(result) == 0:
         suggestions = [
             "Summarize the analysis",
+            "What is the campaign structure?",
             "Which checks were run?",
             "What does a clean result mean?",
         ]
@@ -146,6 +189,29 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
             "**TheorySupportAgent** using Ollama. For now, the available assistant "
             "support is limited to deterministic checker findings."
         )
+
+    if any(term in q for term in ["assistant context", "llm context", "agent context", "prompt context"]):
+        context = build_llm_context(result)
+        return format_llm_context_markdown(context)
+
+    if any(
+        term in q
+        for term in [
+            "campaign structure",
+            "structure",
+            "how many levels",
+            "how many challenges",
+            "how many tasks",
+            "how many waves",
+            "how many transitions",
+            "levels",
+            "tasks",
+            "waves",
+            "visualizations",
+            "transitions",
+        ]
+    ):
+        return _format_campaign_structure(result)
 
     if any(term in q for term in ["summary", "summarize", "overview", "what is wrong", "what's wrong"]):
         lines = [f"The selected checks found **{total}** issue(s)."]

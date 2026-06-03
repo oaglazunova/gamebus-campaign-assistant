@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+from campaign_assistant.checker.result_normalizer import normalize_analysis_result
 from campaign_assistant.checker.wrapper import run_campaign_checks
 from campaign_assistant.session_logging import SessionLogger
 
@@ -47,6 +48,12 @@ class CampaignAnalysisCoordinator:
             file_path=file_path,
             checks=selected_checks,
             export_excel=export_excel,
+        )
+
+        result = normalize_analysis_result(
+            result,
+            source_file=file_path,
+            selected_checks=selected_checks,
         )
 
         assistant_meta = result.setdefault("assistant_meta", {})

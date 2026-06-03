@@ -88,8 +88,6 @@ def render_check_picker(result: dict[str, Any] | None) -> list[str]:
             _clear_all()
             st.rerun()
 
-    st.caption("Select the export-based checks to run.")
-
     for check_id in DEFAULT_CHECKS:
         label = FRIENDLY_CHECK_NAMES.get(check_id, check_id)
         description = _CHECK_DESCRIPTIONS.get(check_id, "")
@@ -99,9 +97,6 @@ def render_check_picker(result: dict[str, Any] | None) -> list[str]:
             key=f"check-picker-{check_id}",
             help=description,
         )
-
-        if description:
-            st.caption(description)
 
     selected = [
         check_id
