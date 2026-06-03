@@ -11,6 +11,7 @@ from campaign_assistant.ui.assistant_chat import (
     render_agent_trace_panel,
     render_assistant_guide_panel,
     render_assistant_page_status,
+    render_prepared_question_panel,
 )
 from campaign_assistant.ui.findings import (
     render_findings_overview_panel,
@@ -256,15 +257,19 @@ def _render_findings_page(result) -> None:
 
 
 def _handle_pending_assistant_prompt(logger, result) -> None:
-	pending = st.session_state.pop("assistant_prefill_prompt", None)
+	pending = st.session_state.pop("assistant_pending_question", None)
 	if not pending or not result:
 		return
 
+	pending = str(pending)
+
 	logger.log_chat_user(pending)
 	st.session_state.messages.append({"role": "user", "content": pending})
+
 	answer = answer_question(pending, result)
 	logger.log_chat_assistant(answer)
 	st.session_state.messages.append({"role": "assistant", "content": answer})
+
 	st.rerun()
 
 
@@ -286,19 +291,24 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 			st.session_state.messages = []
 			st.rerun()
 	with control_col2:
-		st.caption("Use a suggested prompt or ask your own question about the current campaign analysis.")
+		st.caption(
+			"Use a suggested prompt, ask your own question, or send a prepared question from Findings."
+		)
 
 	_handle_pending_assistant_prompt(logger, result)
 
 	if not st.session_state.messages:
-		st.info("No assistant conversation yet. Start with a suggested prompt below, or ask your own question.")
+		st.info("No assistant conversation yet. Use a suggested prompt, a prepared question, or ask your own question.")
 	else:
 		st.markdown("### Conversation")
 		for message in st.session_state.messages:
 			with st.chat_message(message["role"]):
 				st.markdown(message["content"])
 
+	render_prepared_question_panel()
+
 	user_question = st.chat_input("Ask about this campaign...")
+	
 	if user_question:
 		logger.log_chat_user(user_question)
 		st.session_state.messages.append({"role": "user", "content": user_question})
@@ -322,9 +332,14 @@ def main() -> None:
 	result = st.session_state.result
 	_sync_main_workflow_focus_from_result(result)
 
+	requested_page = st.session_state.pop("requested_workflow_page", None)
+	if requested_page in _WORKFLOW_PAGES:
+		st.session_state["main_workflow_page"] = requested_page
+
 	current_page = st.session_state.get("main_workflow_page", "Overview")
 	if current_page not in _WORKFLOW_PAGES:
 		current_page = "Overview"
+		st.session_state["main_workflow_page"] = current_page
 
 	selected_page = st.radio(
 		"Workflow",

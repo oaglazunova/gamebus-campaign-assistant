@@ -3,6 +3,9 @@ from typing import Any
 
 import streamlit as st
 
+from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
+
+
 def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
     snapshot = result.get("campaign_snapshot", {}) or {}
     return dict(snapshot) if isinstance(snapshot, dict) else {}
@@ -104,15 +107,14 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
     c3.metric("Medium priority", medium)
     c4.metric("Low priority", low)
 
-    st.markdown("### Status")
-
     _render_campaign_snapshot_summary(result)
+
+    st.markdown("### Status")
 
     if total > 0:
         st.warning(
-            "Issues found. Review the high-priority findings before deployment. "
-            "Go to the Findings page and filter by high priority, or start with "
-            "the Top priorities list below."
+            "Issues found. Before deployment, review the high-priority findings. "
+            "Use the Findings page to filter by severity, or start with the Top priorities list below."
         )
     else:
         st.success(
@@ -131,7 +133,8 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
             st.markdown("### Failed checks")
             if failed_checks:
                 for check in failed_checks:
-                    st.markdown(f"- {check}")
+                    label = FRIENDLY_CHECK_NAMES.get(check, check)
+                    st.markdown(f"- {label}")
             else:
                 st.caption("No failed checks.")
 
@@ -143,8 +146,17 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
             else:
                 st.caption("No prioritized findings.")
 
-    st.markdown("### Actions")
-    st.caption(
-        "Use the Findings page to inspect issues in detail, or ask the Assistant "
-        "to explain a finding and suggest what to inspect."
-    )
+    st.markdown("### Next steps")
+
+    if total > 0:
+        st.markdown(
+            "- Open **Findings** to inspect issues in detail.\n"
+            "- Start with **High priority** findings.\n"
+            "- Use **Assistant** to ask what an issue means or what to inspect first."
+        )
+    else:
+        st.markdown(
+            "- Open **Findings** to confirm which checks were run.\n"
+            "- Use **Assistant** if you want a short interpretation of the clean result.\n"
+            "- Remember that a clean checker result is not the same as full theory validation."
+        )

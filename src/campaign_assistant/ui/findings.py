@@ -119,6 +119,56 @@ def _location_lines(issue: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
+    title = _issue_title(issue)
+    severity = _severity(issue)
+    check = str(issue.get("check") or "unknown")
+
+    parts = [
+        "Explain this campaign finding and suggest what I should inspect next.",
+        "",
+        f"Check: {check}",
+        f"Severity: {severity}",
+        f"Finding: {title}",
+    ]
+
+    message = _issue_message(issue)
+    if message:
+        parts.append(f"Message: {message}")
+
+    visualization = issue.get("visualization")
+    if visualization:
+        parts.append(f"Visualization: {visualization}")
+
+    challenge = issue.get("challenge")
+    if challenge:
+        parts.append(f"Challenge: {challenge}")
+
+    challenge_id = issue.get("challenge_id")
+    if challenge_id not in (None, ""):
+        parts.append(f"Challenge ID: {challenge_id}")
+
+    wave_id = issue.get("wave_id")
+    if wave_id not in (None, ""):
+        parts.append(f"Wave ID: {wave_id}")
+
+    return "\n".join(parts)
+
+
+def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
+    st.session_state["assistant_prefill_prompt"] = _assistant_prompt_for_issue(issue)
+    st.session_state["assistant_notice"] = (
+        "This question was prepared from a finding."
+    )
+
+    st.session_state["requested_workflow_page"] = "Assistant"
+
+    try:
+        st.query_params["page"] = "assistant"
+    except Exception:
+        pass
+
+
 def _severity_badge(severity: str) -> str:
     severity = severity.lower()
     if severity in {"critical", "high"}:
@@ -273,6 +323,20 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 location = _location_lines(issue)
                 if location:
                     st.markdown("\n".join(f"- {line}" for line in location))
+
+                button_key = (
+                    f"ask-assistant-{check_id}-"
+                    f"{issue.get('challenge_id', 'none')}-"
+                    f"{idx}"
+                )
+
+                if st.button(
+                        "Ask Assistant about this",
+                        key=button_key,
+                        use_container_width=False,
+                ):
+                    _store_assistant_prompt_for_issue(issue)
+                    st.rerun()
 
                 with st.expander("Raw finding details", expanded=False):
                     st.json(issue)

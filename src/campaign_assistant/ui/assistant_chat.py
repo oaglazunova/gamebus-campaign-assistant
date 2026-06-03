@@ -169,7 +169,55 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
     for idx, suggestion in enumerate(suggestions):
         with cols[idx % len(cols)]:
             if st.button(suggestion, key=f"assistant-suggestion-{idx}", use_container_width=True):
-                st.session_state["assistant_prefill_prompt"] = suggestion
+                st.session_state["assistant_pending_question"] = suggestion
+                st.rerun()
+
+
+
+def render_prepared_question_panel() -> None:
+    prepared_prompt = st.session_state.get("assistant_prefill_prompt")
+    notice = st.session_state.get("assistant_notice")
+
+    if not prepared_prompt:
+        return
+
+    st.markdown("### Prepared question from Findings")
+
+    if notice:
+        st.info(str(notice))
+
+    edited_prompt = st.text_area(
+        "Question prepared from Findings",
+        value=str(prepared_prompt),
+        height=180,
+        key="assistant-prepared-question-editor",
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button(
+            "Use this question",
+            key="assistant-use-prepared-question",
+            type="primary",
+            use_container_width=True,
+        ):
+            st.session_state["assistant_pending_question"] = edited_prompt
+            st.session_state.pop("assistant_prefill_prompt", None)
+            st.session_state.pop("assistant_notice", None)
+            st.rerun()
+
+    with col2:
+        if st.button(
+            "Clear prepared question",
+            key="assistant-clear-prepared-question",
+            use_container_width=True,
+        ):
+            st.session_state.pop("assistant_prefill_prompt", None)
+            st.session_state.pop("assistant_notice", None)
+            st.session_state.pop("assistant_pending_question", None)
+            st.rerun()
+
 
 
 def answer_question(user_question: str, result: dict[str, Any]) -> str:
