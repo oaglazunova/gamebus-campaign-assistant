@@ -33,7 +33,7 @@ It is especially useful for people who want a guided interface for running and i
 
 ## Current project status
 
-This version ([0.2.0]) is intentionally narrow and stable. It focuses on:
+This version ([0.2.x]) is intentionally narrow. It focuses on:
 
 * export-based campaign inspection;
 * clearer presentation of checker results;
