@@ -1,9 +1,14 @@
 from __future__ import annotations
 from typing import Any
 
+import base64
+import re
+
 import streamlit as st
+import streamlit.components.v1 as components
 
 from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
+from campaign_assistant.diagram import build_campaign_flow_svg
 
 
 def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
@@ -87,6 +92,173 @@ def _render_campaign_snapshot_summary(result: dict[str, Any]) -> None:
                 st.warning(str(warning))
 
 
+def _render_flow_diagram_panel(result: dict[str, Any]) -> None:
+    snapshot = _campaign_snapshot(result)
+    counts = dict(snapshot.get("counts", {}) or {})
+
+    if not snapshot or not counts:
+        return
+
+    challenge_count = int(counts.get("challenges", 0) or 0)
+    transition_count = int(counts.get("transitions", 0) or 0)
+
+    campaign_stem = _safe_file_stem(
+        snapshot.get("campaign_name")
+        or result.get("campaign_name")
+        or result.get("file_name")
+        or "campaign"
+    )
+
+    svg_state_key = f"flow_diagram_svg_{campaign_stem}"
+
+    with st.expander("Campaign flow diagram", expanded=False):
+        st.caption(
+            f"Creates a downloadable SVG from {challenge_count} challenge/level item(s) "
+            f"and {transition_count} transition(s)."
+        )
+
+        svg = st.session_state.get(svg_state_key)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            create_clicked = st.button(
+                "Create diagram",
+                key=f"flow-diagram-create-{campaign_stem}",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if create_clicked:
+            svg = build_campaign_flow_svg(
+                snapshot,
+                max_nodes=challenge_count if challenge_count > 0 else 120,
+                show_edge_labels=False,
+            )
+            st.session_state[svg_state_key] = svg
+
+        svg = st.session_state.get(svg_state_key)
+
+        with col2:
+            st.download_button(
+                "Download diagram",
+                data=str(svg or "").encode("utf-8"),
+                file_name=f"{campaign_stem}_flow_diagram.svg",
+                mime="image/svg+xml",
+                use_container_width=True,
+                disabled=not bool(svg),
+            )
+
+        if not svg:
+            return
+
+        data_uri = _svg_data_uri(str(svg))
+
+        components.html(
+            f"""
+            <div style="
+                position: relative;
+                width: 100%;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 8px;
+                background: #fafafa;
+                box-sizing: border-box;
+            ">
+                <a href="{data_uri}" target="_blank" rel="noopener noreferrer"
+                   style="
+                       position: absolute;
+                       top: 12px;
+                       right: 12px;
+                       z-index: 10;
+                       padding: 6px 10px;
+                       border-radius: 6px;
+                       border: 1px solid #ccc;
+                       background: white;
+                       color: #222;
+                       font-family: Arial, sans-serif;
+                       font-size: 13px;
+                       text-decoration: none;
+                       box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+                   ">
+                   Open in new tab
+                </a>
+
+                <div style="
+                    width: 100%;
+                    overflow: hidden;
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: center;
+                ">
+                    <div style="
+                        width: 100%;
+                    ">
+                        {svg}
+                    </div>
+                </div>
+            </div>
+
+            <style>
+                svg {{
+                    width: 100% !important;
+                    height: auto !important;
+                    max-height: 560px;
+                    display: block;
+                }}
+            </style>
+            """,
+            height=_diagram_preview_height(str(svg)),
+            scrolling=False,
+        )
+
+
+def _safe_file_stem(value: Any, default: str = "campaign") -> str:
+    text = str(value or default).strip()
+    allowed = []
+
+    for char in text:
+        if char.isalnum() or char in {"-", "_"}:
+            allowed.append(char)
+        elif char.isspace():
+            allowed.append("_")
+
+    cleaned = "".join(allowed).strip("_")
+    return cleaned or default
+
+
+def _svg_data_uri(svg: str) -> str:
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+def _svg_viewbox_size(svg: str) -> tuple[int, int] | None:
+    match = re.search(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"', svg)
+    if not match:
+        return None
+
+    try:
+        return int(float(match.group(1))), int(float(match.group(2)))
+    except Exception:
+        return None
+
+
+def _diagram_preview_height(svg: str) -> int:
+    size = _svg_viewbox_size(svg)
+    if not size:
+        return 520
+
+    width, height = size
+    if width <= 0:
+        return 520
+
+    # Approximate Streamlit content width. This avoids huge empty iframe space
+    # for wide-but-short diagrams.
+    estimated_render_width = 920
+    scaled_height = int((height / width) * estimated_render_width)
+
+    return max(240, min(620, scaled_height))
+
 
 
 def render_analysis_overview(result: dict[str, Any], show_title: bool = True) -> None:
@@ -108,6 +280,7 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
     c4.metric("Low priority", low)
 
     _render_campaign_snapshot_summary(result)
+    _render_flow_diagram_panel(result)
 
     st.markdown("### Status")
 
