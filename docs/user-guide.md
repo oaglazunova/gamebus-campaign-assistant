@@ -1,39 +1,47 @@
 # User Guide
 
-This guide explains how to use **GameBus Campaign Assistant** to check a GameBus campaign Excel export.
+This guide explains how to use **GameBus Campaign Assistant** to inspect a GameBus campaign Excel export.
 
 ## What this app is for
 
-GameBus Campaign Assistant helps you inspect a campaign configuration file that was exported from GameBus.
+GameBus Campaign Assistant helps campaign organizers review a campaign configuration exported from GameBus.
 
 It can help you:
 
-- run the existing campaign checks,
-- see which checks passed or failed,
-- read issues in a chat-style interface,
-- understand TTM-related problems,
-- and optionally download an Excel error report.
+* upload or download a campaign Excel export;
+* run export-based campaign checks;
+* see which checks passed or failed;
+* inspect detected findings;
+* ask one assistant chat about findings, campaign structure, possible improvements, or behavior-change theory;
+* generate a simple campaign flow diagram;
+* optionally download generated outputs such as reports or diagrams when available.
+
+The app supports campaign review. It does **not** edit campaigns directly in GameBus.
+
+---
 
 ## What you need before starting
 
-Before you use the app, make sure you have:
+You need either:
 
-- a GameBus campaign Excel export (`.xlsx`), or
-- valid GameBus credentials if you use the optional download feature
+* a GameBus campaign Excel export (`.xlsx`), or
+* valid GameBus credentials if the download option is available in your version.
 
-If you are not sure, the safest workflow is:
+The safest workflow is:
 
-1. export the campaign from GameBus manually
-2. save the `.xlsx` file on your computer
-3. upload it in the app
+1. export the campaign from GameBus manually;
+2. save the `.xlsx` file on your computer;
+3. upload it in the app.
+
+---
 
 ## Starting the app
 
 ### If you received the Windows scripts
 
-1. Open the project folder
-2. Double-click `scripts/run_app.bat`
-3. Wait for your browser to open
+1. Open the project folder.
+2. Double-click `scripts/run_app.bat`.
+3. Wait for the browser to open.
 
 ### If you start it manually
 
@@ -41,188 +49,229 @@ Open a terminal in the project folder and run:
 
 ```powershell
 streamlit run src/campaign_assistant/app.py
-````
+```
 
-After a short moment, the app should open in your browser.
+The app should open in your browser at `http://localhost:8501`.
 
 ---
 
-# Checking a campaign
+## Checking a campaign
 
-## Option 1 — Upload a campaign Excel file
+### Option 1 — Upload a campaign Excel file
 
 This is the easiest and most reliable method.
 
-1. Open the app
-2. In the sidebar, choose **Upload Excel file**
-3. Click the upload field
-4. Select your campaign `.xlsx` file
-5. Choose the checks you want to run
-6. Click **Analyze campaign**
+1. Open the app.
+2. In the sidebar, choose **Upload Excel file**.
+3. Select your campaign `.xlsx` file.
+4. Choose the checks you want to run.
+5. Click **Analyze campaign**.
 
-The assistant will then show a summary in the main panel.
+### Option 2 — Download from GameBus
 
-## Option 2 — Download from GameBus
+If this feature is available in your version:
 
-If this feature is available in your version of the app:
+1. Open the app.
+2. In the sidebar, choose **Download from GameBus**.
+3. Enter your credentials and campaign abbreviation.
+4. Click **Analyze campaign**.
 
-1. Open the app
-2. In the sidebar, choose **Download from GameBus**
-3. Enter your email and password
-4. Enter the campaign abbreviation
-5. Click **Analyze campaign**
-
-The app will try to download the campaign file first, and then run the checks.
-
-If this does not work, use **Option 1** instead.
+If downloading does not work, export the campaign manually and use file upload instead.
 
 ---
 
-# Understanding the results
+## Understanding the pages
 
-After analysis, the assistant will show:
+After analysis, the app has three main pages:
 
-* the number of issues found,
-* which checks failed,
-* which checks passed,
-* and which waves are active now, if available in the file.
+### Overview
 
-Below that, you will see issues grouped by **check type**.
+The Overview page shows:
 
-Examples:
+* campaign structure summary;
+* number of detected issues;
+* failed and passed checks;
+* high-priority findings;
+* optional campaign flow diagram.
 
-* Reachability
-* Consistency
-* Visualization internals
-* Target points reachable
-* Secrets
-* TTM structure
+The flow diagram can be created from the exported campaign structure. It shows levels/challenges, transitions, and progression paths as an SVG diagram.
 
-## What “priority” means
+### Findings
 
-The assistant tries to show the most important issues first.
+The Findings page shows detected issues in more detail.
 
-At the moment, priority is based mainly on:
+Use this page to inspect:
 
-* issue severity
-* whether the issue belongs to an active wave
+* which check produced the finding;
+* how severe the finding is;
+* where in the campaign it appears;
+* what should be reviewed.
 
-This means that a serious issue in an active wave is usually shown before a less important issue in an inactive wave.
+Some findings have an **Ask Assistant about this** button. This prepares a question for the Assistant page.
 
----
+### Assistant
 
-# Using the chat
+The Assistant page contains one chat window.
 
-After running a check, you can ask follow-up questions in the chat box.
+You can ask questions such as:
 
-Examples:
+```text
+What should I inspect first?
+Which checks failed?
+Explain this finding.
+Is this campaign too complicated?
+What BCTs could be considered?
+Does this campaign follow TTM?
+Will this help people lose weight?
+```
 
-* `Summarize the issues`
-* `Which checks failed?`
-* `Show TTM issues`
-* `Show consistency issues`
-* `What should I fix first?`
-* `Explain TTM`
-
-The assistant answers based on the results of the current campaign analysis.
-
-## Important
-
-The assistant does **not** currently edit the campaign for you.
-
-It only helps you inspect and understand the current exported file.
+The Assistant automatically routes questions to the relevant support mode. You do not need to choose an agent manually.
 
 ---
 
-# TTM checks
+## Checks
 
-The current TTM check assumes a specific level structure with forward progression and relapse / at-risk levels.
+The current default checks are:
 
-If the assistant reports a TTM problem, it usually means one of these:
+* `secrets`
+* `spellchecker`
+* `reachability`
+* `consistency`
+* `visualizationintern`
+* `targetpointsreachable`
 
-* a level points to the wrong next level
-* a fallback / relapse transition is incorrect
-* the intended progression structure is broken
+The checker output is the source of truth for detected export-level issues.
 
-If you want more detail, ask the chat:
-
-* `Explain TTM`
-* `Show TTM issues`
-
----
-
-# Excel report export
-
-The app automatically generates an Excel report of issues after every successful analysis. If issues are found, a download button will appear in the sidebar.
-
-This is useful if:
-
-* you want to archive the results
-* you want to share them with someone else
-* you prefer reviewing issues in Excel
+If the selected checks find zero issues, this means only that no issues were detected by those checks. It does **not** prove that the campaign is optimal, theory-aligned, or effective.
 
 ---
 
-# Common problems
+## Behavior-change theory questions
 
-## The app does not start
+The Assistant can provide advisory theory-oriented support.
 
-Make sure:
+For example, it can discuss:
 
-* Python is installed
-* the project dependencies are installed
-* you started the correct script
+* possible BCTs to consider;
+* COM-B-related design questions;
+* TTM-related design questions;
+* participant burden;
+* adherence and engagement considerations.
 
-## Upload does nothing
+However, the app does **not** formally validate theory alignment from the export alone.
 
-Make sure the file is:
+For example:
 
-* a GameBus campaign export
-* an `.xlsx` file
-* not currently open in another program
+* progression through levels does not automatically prove TTM alignment;
+* points or rewards do not automatically prove BCT implementation;
+* task counts do not automatically prove that a campaign is too complex;
+* a campaign export cannot prove weight-loss or health outcomes.
 
-## Download from GameBus fails
+Effectiveness requires intervention-content review and empirical evaluation.
+
+---
+
+## LLM support
+
+The Assistant can use a local Ollama model if configured.
+
+If Ollama is unavailable, the app still works. In that case, the Assistant uses deterministic fallback responses.
+
+If you see a message saying that Ollama is unavailable, check that Ollama is running and that the selected model has been pulled, for example:
+
+```powershell
+ollama serve
+ollama pull gemma3:1b
+```
+
+---
+
+## Campaign flow diagram
+
+The Overview page can generate a simple SVG diagram from the campaign export.
+
+The diagram shows:
+
+* levels/challenges as boxes;
+* tracks based on visualizations;
+* success/standard transitions;
+* failure transitions;
+* task counts and target points when available.
+
+You can:
+
+* create the diagram;
+* download it as SVG;
+* open it in a new browser tab.
+
+The diagram is intended as a readable overview, not as a complete replacement for checking the Excel export.
+
+---
+
+## Common problems
+
+### The app does not start
+
+Check that:
+
+* Python is installed;
+* dependencies are installed;
+* you started the correct script or command.
+
+### Upload does nothing
+
+Check that the file is:
+
+* a GameBus campaign export;
+* an `.xlsx` file;
+* not open in another program.
+
+### Download from GameBus fails
 
 Possible causes:
 
-* wrong credentials
-* expired session
-* network/server problem
-* the campaign abbreviation is incorrect
+* wrong credentials;
+* expired session;
+* network or server problem;
+* incorrect campaign abbreviation.
 
-If this happens, export the campaign manually and use file upload instead.
+If this happens, export the campaign manually and upload the file.
 
-## I do not understand an error
+### The Assistant gives only basic answers
 
-Try asking the assistant:
+LLM support may be disabled or unavailable. The app still works, but answers will be more limited.
 
-* `Summarize the issues`
-* `Explain TTM`
-* `What should I fix first?`
+### I do not understand a finding
 
-If needed, also use the Excel report for the detailed raw output.
+Try asking:
 
----
-
-# Current limitations
-
-This version of the app does **not** yet:
-
-* edit campaigns directly in GameBus
-* upload corrected files back into GameBus
-* compare two campaign files
-* generate campaign content
-* fully validate all design or theory aspects automatically
-
-It is mainly a user-friendly interface around the current checker.
+```text
+Explain this finding.
+What should I inspect first?
+Which checks failed?
+What does this issue mean?
+```
 
 ---
 
-# Need more help?
+## Current limitations
 
-If available in your project, also check:
+This version does not:
+
+* edit campaigns directly in GameBus;
+* upload corrected files back into GameBus;
+* compare two campaign files;
+* generate new campaign content;
+* formally validate behavior-change theory alignment.
+
+It is mainly a user-friendly interface for export-based campaign inspection, explanation support, advisory theory reflection, and campaign-flow visualization.
+
+---
+
+## Need more help?
+
+Also check:
 
 * `README.md`
-* `docs/installation-windows.md`
-* `docs/legacy-checker.md`
-* `docs/ttm-checks.md`
+* `CHANGELOG.md`
+* `AGENTS.MD`

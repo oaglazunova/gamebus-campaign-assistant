@@ -1,207 +1,348 @@
 # AI Agent Guidelines for GameBus Campaign Assistant
 
-This is a **Streamlit-based analysis tool** that wraps a legacy GameBus campaign checker and presents results in a chat-style interface. AI agents should understand the layered architecture and specific conventions used here.
+This repository contains a **Streamlit-based campaign inspection tool** for GameBus campaign exports. The current paper-release branch is intentionally narrower than the earlier MVP: it focuses on deterministic export-based checks, a simplified review UI, one assistant chat, optional local LLM support, guardrailed explanations, and a downloadable campaign-flow diagram.
+
+These guidelines describe the current architecture. Do not reintroduce removed metadata, sidecar, workspace-readiness, patch-generation, or capability-gating workflows unless they are explicitly re-scoped in a future release.
 
 ## Big Picture Architecture
 
-### Layered Structure: Three Key Responsibilities
+### Current Responsibilities
 
-The codebase has a distinct **separation of concerns** across three layers:
+The codebase is organized around four responsibilities:
 
-1. **UI Layer** (`src/campaign_assistant/ui/`)
-   - Streamlit frontend code
-   - Manages session state, chat interaction, and user workflows
-   - Key file: `app.py` orchestrates tab switching (Chat vs Editor)
-   - Does NOT contain business logic
+1. **UI Layer** (`src/campaign_assistant/ui/` and `src/campaign_assistant/app.py`)
+   - Streamlit frontend code.
+   - Provides the main pages: Overview, Findings, and Assistant.
+   - Manages session state, uploaded/downloaded campaign files, prepared assistant questions, and UI navigation.
+   - Does not implement checker logic or LLM policy logic directly.
 
-2. **Orchestration Layer** (`src/campaign_assistant/orchestration/`)
-   - `CampaignAnalysisCoordinator` runs a fixed pipeline of 5 agents sequentially
-   - Pipeline: `PrivacyGuardian` → `CapabilityResolver` → `StructuralChangeAgent` → `TheoryGroundingAgent` → `ContentFixerAgent`
-   - Creates/reuses `Workspace` objects to persist campaign state across reruns
-   - Each agent receives `AgentContext` (immutable request data) and updates `context.shared` (mutable result accumulator)
+2. **Checker and Result Normalization** (`src/campaign_assistant/checker/`)
+   - Wraps the legacy GameBus campaign checker.
+   - Runs selected deterministic export-based checks.
+   - Normalizes raw checker output into a stable result dictionary.
+   - Builds a `campaign_snapshot` used by the Overview, Assistant context, and flow diagram.
 
-3. **Core Components** (checker, workspace, agents)
-   - `checker/wrapper.py`: Wraps legacy campaign checker; converts raw issues to normalized `Issue` objects
-   - `workspace/`: Creates persistent directories per campaign to store metadata, snapshots, profiles
-   - `agents/`: Individual agents that run sequentially during orchestration
+3. **Assistant Support Layer** (`src/campaign_assistant/agents/` and `src/campaign_assistant/llm/`)
+   - Provides one user-facing Assistant chat.
+   - Routes questions automatically between Campaign Support and Theory Support.
+   - Uses optional LLM support through Ollama or a mock client.
+   - Falls back to deterministic responses when LLM support is disabled or unavailable.
+   - Uses fact-sheet and response-guard logic to prevent high-risk hallucinations.
 
-### The Campaign Analysis Flow
+4. **Diagram Generation** (`src/campaign_assistant/diagram/`)
+   - Generates a dependency-free SVG campaign-flow diagram.
+   - Uses campaign snapshot data: levels/challenges, visualizations, tasks, target points, and formal success/failure transitions.
+   - Does not require Graphviz or any external system executable.
 
+## Current Campaign Analysis Flow
+
+```text
+User uploads/selects a GameBus campaign export
+    ↓
+app.py triggers CampaignAnalysisCoordinator.analyze_campaign()
+    ↓
+checker.run_campaign_checks() runs selected deterministic checks
+    ↓
+checker.result_normalizer.normalize_analysis_result()
+    ├─ normalizes summary/finding structures
+    ├─ builds prioritized findings
+    └─ builds campaign_snapshot
+    ↓
+result stored in Streamlit session state
+    ↓
+Rendered in UI pages:
+    ├─ Overview: status, structure, priorities, optional flow diagram
+    ├─ Findings: detailed checker findings and prepared assistant questions
+    └─ Assistant: one guardrailed chat for findings, structure, improvements, and theory support
 ```
-User uploads/downloads campaign file
+
+## Current Assistant Flow
+
+```text
+User asks a question in Assistant
     ↓
-app.py → run_analysis() in ui/actions.py
+AssistantCoordinator.answer()
     ↓
-CampaignAnalysisCoordinator.analyze_campaign()
-    ├→ Agent 1: PrivacyGuardian (validates data access policy)
-    ├→ Agent 2: CapabilityResolver (loads metadata, analysis profiles)
-    ├→ Agent 3: StructuralChangeAgent (runs legacy checker, normalizes issues)
-    ├→ Agent 4: TheoryGroundingAgent (maps issues to TTM/intervention theory)
-    ├→ Agent 5: ContentFixerAgent (generates fix proposals)
+IntentRouter.route()
+    ├─ Campaign Support Agent for checker/finding/inspection questions
+    └─ Theory Support Agent for BCT, COM-B, TTM, burden, adherence, engagement, and outcome questions
     ↓
-Result stored in: st.session_state.result (dict with keys: issues, summary, theory_grounding, fix_proposals, etc.)
+build_llm_context() creates compact assistant context
+build_fact_sheet() creates authoritative checker/export facts
     ↓
-Rendered in UI tabs: Chat (chat-based Q&A) or Editor (structured issue panel views)
+Selected support agent generates answer
+    ↓
+validate_agent_response() checks for unsafe contradictions or overclaims
+    ↓
+Final answer shown in the single Assistant chat
 ```
 
-## Critical Developer Workflows
+## Important Current Design Rules
 
-### Running the App (Windows)
+### 1. Checker output is authoritative
 
-Two ways to start:
+The deterministic checker result is the source of truth for export-level issues. Assistant responses must not contradict:
+
+- `total_issues`
+- `failed_checks`
+- `errored_checks`
+- `issue_count_by_check`
+- known prioritized findings
+
+If the selected checks found zero issues, the Assistant must not say that the checker found problems, warnings, errors, or inconsistencies.
+
+### 2. Export structure is descriptive, not evaluative
+
+Counts such as numbers of waves, visualizations, levels/challenges, tasks, or transitions are descriptive facts. They are not automatically problems.
+
+For example, the Assistant may say:
+
+```text
+The export contains 80 tasks.
+```
+
+It should not say:
+
+```text
+The campaign has a task-count issue.
+```
+
+unless this is supported by a deterministic checker finding.
+
+### 3. Theory support is advisory
+
+Theory-oriented answers must be framed as advisory reflection, not formal validation.
+
+The Assistant must not infer formal TTM, COM-B, or BCT implementation from levels, waves, visualizations, or task counts alone. It may suggest possible theory-oriented review questions or design improvements.
+
+### 4. No outcome claims from export alone
+
+The Assistant must not claim that a campaign will cause weight loss, improve health outcomes, or be effective. Such claims require intervention-content review and empirical evaluation.
+
+For outcome questions, use cautious language such as:
+
+```text
+The campaign export and checker output cannot determine whether the campaign will cause weight loss or other health outcomes.
+```
+
+### 5. LLM support is optional
+
+The app must work when LLM support is unavailable. Ollama may improve answer quality, but the app should degrade gracefully to deterministic fallback responses.
+
+## Key Current Modules
+
+| Path | Purpose |
+|------|---------|
+| `src/campaign_assistant/app.py` | Main Streamlit entry point and page routing |
+| `src/campaign_assistant/checker/wrapper.py` | Wrapper around the legacy GameBus checker |
+| `src/campaign_assistant/checker/result_normalizer.py` | Normalizes checker output and builds paper-release result structures |
+| `src/campaign_assistant/checker/campaign_snapshot.py` | Extracts campaign structure for Overview, Assistant, and diagram generation |
+| `src/campaign_assistant/checker/schema.py` | Current check identifiers and default check set |
+| `src/campaign_assistant/orchestration/coordinator.py` | Runs the current analysis pipeline |
+| `src/campaign_assistant/ui/overview.py` | Overview page, status, priorities, campaign structure, flow diagram panel |
+| `src/campaign_assistant/ui/findings.py` | Findings page and finding-specific assistant prompts |
+| `src/campaign_assistant/ui/assistant_chat.py` | Single Assistant chat UI |
+| `src/campaign_assistant/ui/check_picker.py` | Sidebar check selection UI |
+| `src/campaign_assistant/agents/assistant_coordinator.py` | Coordinates assistant routing, answering, and response guarding |
+| `src/campaign_assistant/agents/intent_router.py` | Routes user questions to the correct support agent |
+| `src/campaign_assistant/agents/campaign_support_agent.py` | Explains checker findings and inspection steps |
+| `src/campaign_assistant/agents/theory_support_agent.py` | Provides advisory behavior-change theory support |
+| `src/campaign_assistant/agents/context_builder.py` | Builds compact LLM context from normalized results |
+| `src/campaign_assistant/agents/fact_sheet.py` | Builds authoritative checker/export facts for response validation |
+| `src/campaign_assistant/agents/response_guard.py` | Blocks high-risk hallucinations and unsupported claims |
+| `src/campaign_assistant/agents/question_types.py` | Classifies outcome, BCT, TTM, COM-B, and design-quality questions |
+| `src/campaign_assistant/llm/` | Ollama, mock, and LLM client factory code |
+| `src/campaign_assistant/diagram/flow_diagram.py` | Dependency-free SVG campaign-flow diagram generator |
+| `tests/` | Current paper-release test suite |
+
+## Current Deterministic Checks
+
+The current default checks are:
+
+```python
+SECRETS
+SPELLCHECKER
+REACHABILITY
+CONSISTENCY
+VISUALIZATIONINTERN
+TARGETPOINTSREACHABLE
+```
+
+Use constants from `campaign_assistant.checker.schema` rather than hard-coded strings where possible.
+
+Do not reintroduce old removed checks such as unreliable native/TTM structure checks unless they are redesigned and explicitly re-scoped.
+
+## Removed / Out-of-Scope Workflows
+
+The following were part of earlier prototypes or planning but are intentionally out of scope for the current paper-release branch:
+
+- metadata sidecars;
+- task-role metadata;
+- workspace readiness;
+- workspace bundles;
+- capability-gated validators;
+- old privacy/workspace diagnostics UI;
+- patch generation;
+- patched Excel drafts;
+- metadata-dependent fix proposal generation;
+- old multi-agent analysis pipeline with `PrivacyGuardian`, `CapabilityResolver`, `StructuralChangeAgent`, `TheoryGroundingAgent`, and `ContentFixerAgent`;
+- old setup/workspace pages;
+- formal theory-validation checks based on unreliable assumptions.
+
+Do not add compatibility shims for these removed modules just to satisfy obsolete tests. The test suite should match the current paper-release scope.
+
+## Running the App on Windows
+
 ```powershell
-# Option 1: Automated script (recommended for end-users)
-scripts/run_app.bat
-
-# Option 2: Manual
 .venv\Scripts\activate
 streamlit run src/campaign_assistant/app.py
 ```
 
-The app opens in the browser at `http://localhost:8501`.
+The app opens in the browser at:
 
-### Running Tests
+```text
+http://localhost:8501
+```
+
+If a helper script exists, end users may also use:
 
 ```powershell
-pytest                    # Run all tests
-pytest -xvs              # Verbose, stop on first failure
-pytest tests/agents/     # Run only agent tests
+scripts\run_app.bat
 ```
 
-Tests live alongside source code (e.g., `tests/agents/` mirrors `src/campaign_assistant/agents/`). Use `conftest.py` for shared fixtures.
+## Optional Ollama Setup
 
-### Install Development Mode
+The default local model is intended to be lightweight:
 
 ```powershell
-pip install -e .[dev]  # Installs with dev dependencies (pytest, pytest-mock)
+ollama pull gemma3:1b
 ```
 
-## Project-Specific Conventions
+Then run the app normally:
 
-### 1. Error Handling in Agents
-
-All agents inherit from `BaseAgent` and return `AgentResponse`:
-```python
-@dataclass
-class AgentResponse:
-    agent_name: str
-    success: bool
-    summary: str
-    payload: dict[str, Any]
-    warnings: list[str]
+```powershell
+streamlit run src/campaign_assistant/app.py
 ```
 
-If an agent fails (`success=False`), the coordinator raises `RuntimeError` and halts the pipeline. **Always set `success=True` only when your agent completed without critical errors.**
+Useful environment variables:
 
-### 2. Shared State Pattern
-
-Agents communicate via `context.shared` (a mutable dict), NOT by modifying context directly:
-```python
-# In an agent:
-context.shared["my_result"] = {...}  # ✓ Correct
-context.analysis_profile = {}         # ✗ Wrong (context is immutable)
+```powershell
+$env:CAMPAIGN_ASSISTANT_LLM_ENABLED="false"
+$env:CAMPAIGN_ASSISTANT_LLM_PROVIDER="ollama"
+$env:CAMPAIGN_ASSISTANT_LLM_MODEL="gemma3:1b"
+$env:CAMPAIGN_ASSISTANT_SHOW_ROUTING="false"
 ```
 
-The coordinator merges agent results into the final `result` dict:
-```python
-result["theory_grounding"] = context.shared.get("theory_grounding", {})
-result["fix_proposals"] = context.shared.get("fix_proposals", {})
+For tests, the mock LLM provider can be used:
+
+```powershell
+$env:CAMPAIGN_ASSISTANT_LLM_PROVIDER="mock"
+$env:CAMPAIGN_ASSISTANT_MOCK_LLM_RESPONSE="Mock response."
 ```
 
-### 3. Workspace Persistence
+## Running Tests
 
-`Workspace` objects are created once per campaign and reused across multiple analyses:
-- Located at: `~/.gamebus_campaign_assistant/<workspace_id>/`
-- Contains: snapshots, metadata files, analysis profiles, point rules
-- Use `get_or_create_workspace_for_campaign()` (never instantiate directly)
-- Key property: `workspace.snapshot_id` is a hash of the campaign file; reobtain it for each rerun
-
-### 4. Legacy Checker Integration
-
-The legacy checker is **dynamically loaded** from `src/campaign_assistant/legacy/gamebus_campaign_checker.py`:
-```python
-# In checker/wrapper.py
-spec = importlib.util.spec_from_file_location(...)
-legacy_checker = importlib.util.module_from_spec(spec)
-CampaignChecker = legacy_checker.CampaignChecker
+```powershell
+pytest
 ```
 
-**Do not import it directly.** Use `run_campaign_checks()` instead:
+The current tests are intentionally aligned with the paper-release scope. They cover imports, assistant routing, response guards, diagram generation, and key integration behavior.
+
+Old tests from the previous MVP architecture should not be active in this branch.
+
+## Legacy Checker Integration
+
+The legacy checker remains isolated in:
+
+```text
+src/campaign_assistant/legacy/gamebus_campaign_checker.py
+```
+
+Use the wrapper instead of importing the legacy checker directly:
+
 ```python
 from campaign_assistant.checker import run_campaign_checks
-result = run_campaign_checks(file_path, checks=[...], export_excel=False)
+
+result = run_campaign_checks(
+    file_path=file_path,
+    checks=selected_checks,
+    export_excel=False,
+)
 ```
 
-### 5. Check Types (Enums in `checker/schema.py`)
+## Streamlit Session State Conventions
 
-Seven check types; always use constants, not strings:
-```python
-CONSISTENCY, VISUALIZATIONINTERN, REACHABILITY, TARGETPOINTSREACHABLE, SECRETS, SPELLCHECKER, TTMSTRUCTURE
-```
+Streamlit reruns the script on widget interactions. Preserve important data in `st.session_state`, especially:
 
-Each has a **severity level** for prioritization:
-- **High**: TTM, TargetPointsReachable, Reachability, Consistency
-- **Medium**: VisualizationIntern, Secrets
-- **Low**: SpellChecker
+- current analysis result;
+- selected page;
+- assistant chat messages;
+- prepared assistant question from Findings;
+- generated flow diagram SVG.
 
-### 6. Session Logging (Audit Trail)
+Use stable keys for buttons, checkboxes, and generated diagram state. Avoid storing raw large temporary objects unless needed.
 
-Every user action is logged to `logs/session_<id>.jsonl` (line-delimited JSON):
-```python
-from campaign_assistant.session_logging import SessionLogger
-logger = SessionLogger()
-logger.log("event_type", {"key": "value"})
-```
+## Flow Diagram Conventions
 
-SessionLogger is injected into the coordinator. When debugging, **always check the log file first** for what the user actually did.
+The flow diagram is generated as SVG and should remain dependency-free.
 
-### 7. Streamlit Session State Management
+Do not use Graphviz, because it requires a separate system executable and creates installation burden for campaign organizers.
 
-Streamlit reruns the entire script on button clicks/input changes. The app preserves state across reruns:
-```python
-st.session_state.result      # Campaign analysis result (persists across reruns)
-st.session_state.messages    # Chat history
-st.session_state.settings    # User email, saved campaigns (from local storage)
-st.session_state.app_config  # Global config (from config/app_config.json)
-```
+Diagram semantics:
 
-**Avoid mutating these directly in the UI;** instead use coordinator/storage functions that properly handle state.
+- boxes represent levels/challenges;
+- tracks usually correspond to visualizations;
+- disconnected progressions inside one visualization are shown as subtracks;
+- task count and target points are shown in box subtitles when available;
+- orange horizontal arrows represent direct success/standard transitions to the next displayed level;
+- colored curves represent other transitions;
+- dashed curves represent failure transitions.
 
-## Key Files to Know
-
-| Path | Purpose |
-|------|---------|
-| `src/campaign_assistant/app.py` | Main Streamlit entrypoint; tabs, user flow |
-| `src/campaign_assistant/orchestration/coordinator.py` | Runs the 5-agent pipeline; orchestrates analysis |
-| `src/campaign_assistant/checker/wrapper.py` | Wraps legacy checker; normalizes issues |
-| `src/campaign_assistant/agents/base.py` | Base class for all agents |
-| `src/campaign_assistant/workspace/` | Workspace directory management & metadata loading |
-| `src/campaign_assistant/ui/actions.py` | UI actions (upload, download, run analysis) |
-| `src/campaign_assistant/ui/chat.py` | Chat Q&A and panel rendering |
-| `src/campaign_assistant/storage.py` | Persistent user settings (keyring, JSON) |
-| `pyproject.toml` | Package metadata, dependencies, pytest config |
-
-## External Dependencies & Integrations
-
-- **Streamlit**: Web framework; manages session, page config, widgets
-- **Pandas & openpyxl**: Excel file reading/writing
-- **requests & keyring**: GameBus API calls + secure credential storage
-- **language-tool-python**: Spelling checks in checker
-- **Legacy checker**: Historical GameBus checker logic (isolated in `legacy/` folder)
+The diagram is an inspection aid. It does not replace the campaign export.
 
 ## Common Pitfalls to Avoid
 
-1. **Importing the legacy checker directly** → Use `run_campaign_checks()` wrapper instead
-2. **Modifying context fields in agents** → Use `context.shared[key] = value`
-3. **Forgetting to set `success=True` on AgentResponse** → Pipeline halts silently
-4. **Not handling FileNotFoundError in workspace code** → Workspace files can be deleted between reruns
-5. **Modifying st.session_state.settings without persisting** → Changes lost on next run; use `storage.py` functions
-6. **Assuming check IDs are user-facing strings** → They're enum-like constants; display via `FRIENDLY_CHECK_NAMES` dict
+1. Reintroducing removed metadata/workspace/sidecar functionality into the paper-release branch.
+2. Treating export structure counts as checker issues.
+3. Letting the LLM contradict deterministic checker output.
+4. Letting theory support claim formal TTM/COM-B/BCT alignment without explicit evidence.
+5. Claiming weight-loss or health-effectiveness outcomes from export structure alone.
+6. Using Graphviz or another system-level dependency for the diagram.
+7. Rendering SVG with `st.image()`; use HTML/component rendering or download instead.
+8. Adding old compatibility shims just to satisfy obsolete tests.
+9. Importing the legacy checker directly instead of using the wrapper.
+10. Hiding important assistant guardrail behavior inside UI-only code; keep policy logic centralized in `response_guard.py` and `fact_sheet.py`.
 
 ## Testing Strategy
 
-- Use `pytest` with fixtures from `conftest.py`
-- Mock Streamlit components with `@patch("streamlit....")`
-- Mock legacy checker in agent tests (it's dynamically loaded)
-- Keep test files in mirror structure: `tests/agents/test_*.py` mirrors `src/campaign_assistant/agents/`
+Use `pytest` with focused tests for the current release scope:
 
+- import smoke tests;
+- intent routing tests;
+- fact-sheet tests;
+- response-guard tests;
+- assistant integration guard tests;
+- flow diagram tests;
+- selected checker/normalizer tests if needed.
+
+Avoid restoring the large obsolete test suite from the old MVP architecture unless those features are intentionally restored.
+
+## Future Extension: Approved Design Context
+
+A possible future Phase 7 may add optional uploaded campaign-design documents. If implemented, it should extend the fact-sheet system rather than bypass it.
+
+Recommended future pattern:
+
+```text
+uploaded design documents
+    ↓
+text extraction / summary generation
+    ↓
+organizer review and approval
+    ↓
+approved design fact sheet
+    ↓
+assistant grounding context
+```
+
+Raw documents should not be passed directly into routine assistant prompts. Approved design facts should remain separate from checker facts and export facts.
