@@ -3,39 +3,39 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-# Check identifiers
+# Reliable export-based check identifiers.
 CONSISTENCY = "consistency"
 VISUALIZATIONINTERN = "visualizationintern"
 REACHABILITY = "reachability"
 TARGETPOINTSREACHABLE = "targetpointsreachable"
 SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
-TTMSTRUCTURE = "ttm"
 
+# Checks that can be computed from the campaign export itself.
 UNIVERSAL_CHECKS = [
-    REACHABILITY,
-    CONSISTENCY,
-    VISUALIZATIONINTERN,
     SECRETS,
     SPELLCHECKER,
 ]
 
-CAPABILITY_GATED_CHECKS = [
+EXPORT_STRUCTURAL_CHECKS = [
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
 ]
 
-FAMILY_SPECIFIC_CHECKS = [
-    TTMSTRUCTURE,
-]
-
-# Default checks exposed in the UI / app flow
+# Checks shown/used in the normal app flow.
 DEFAULT_CHECKS = [
     *UNIVERSAL_CHECKS,
-    *CAPABILITY_GATED_CHECKS,
-    *FAMILY_SPECIFIC_CHECKS,
+    *EXPORT_STRUCTURAL_CHECKS,
 ]
 
-# Human-friendly names for UI display
+# Complete supported runtime check list.
+ALL_CHECKS = [
+    *DEFAULT_CHECKS,
+]
+
+# Human-friendly names for UI display.
 FRIENDLY_CHECK_NAMES = {
     REACHABILITY: "Reachability",
     CONSISTENCY: "Consistency",
@@ -43,12 +43,10 @@ FRIENDLY_CHECK_NAMES = {
     TARGETPOINTSREACHABLE: "Target points reachable",
     SECRETS: "Secrets",
     SPELLCHECKER: "Spellchecker",
-    TTMSTRUCTURE: "TTM structure",
 }
 
-# Used for issue prioritization
+# Used for issue prioritization.
 SEVERITY_BY_CHECK = {
-    TTMSTRUCTURE: "high",
     TARGETPOINTSREACHABLE: "high",
     REACHABILITY: "high",
     CONSISTENCY: "high",

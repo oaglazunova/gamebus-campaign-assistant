@@ -9,14 +9,32 @@ from campaign_assistant.checker.native_targetpointsreachable import (
     run_native_targetpointsreachable_check,
 )
 from campaign_assistant.checker.schema import (
-    CAPABILITY_GATED_CHECKS,
+    CONSISTENCY,
+    REACHABILITY,
+    SECRETS,
+    SPELLCHECKER,
     TARGETPOINTSREACHABLE,
-    TTMSTRUCTURE,
-    UNIVERSAL_CHECKS,
+    VISUALIZATIONINTERN,
 )
 from campaign_assistant.checker.wrapper import run_campaign_checks
-from campaign_assistant.reasoning import PointGatekeepingService
 from campaign_assistant.validators.base import BaseValidator, ValidationContext, ValidationResult
+
+
+UNIVERSAL_STRUCTURAL_CHECKS = [
+    SECRETS,
+    SPELLCHECKER,
+]
+
+EXPORT_STRUCTURAL_CHECKS = [
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
+]
+
+ALL_EXPORT_BASED_STRUCTURAL_CHECKS = [
+    *UNIVERSAL_STRUCTURAL_CHECKS,
+    *EXPORT_STRUCTURAL_CHECKS,
+]
 
 
 def _selected_subset(selected_checks: list[str], allowed_checks: list[str]) -> list[str]:
@@ -66,39 +84,27 @@ def _checker_payload_from_single_native_result(
     }
 
 
-def _validator_applicability(context: ValidationContext) -> dict[str, bool]:
-    summary = context.capability_summary or {}
-    return dict(summary.get("validator_applicability") or {})
+class ExportStructuralValidator(BaseValidator):
+    """
+    Runs reliable export-based structural checks.
+    """
 
-
-def _theory_tags(context: ValidationContext) -> set[str]:
-    metadata_bundle = context.metadata_bundle
-    if metadata_bundle is None:
-        return set()
-
-    theory_sources = getattr(metadata_bundle, "theory_sources", []) or []
-    tags: set[str] = set()
-
-    for source in theory_sources:
-        for tag in getattr(source, "tags", []) or []:
-            normalized = str(tag).strip().lower()
-            if normalized:
-                tags.add(normalized)
-
-    return tags
-
-
-class UniversalStructuralValidator(BaseValidator):
-    name = "universal_structural"
+    name = "export_structural"
 
     def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
-        checks = _selected_subset(context.selected_checks, UNIVERSAL_CHECKS)
+        checks = _selected_subset(
+            context.selected_checks,
+            ALL_EXPORT_BASED_STRUCTURAL_CHECKS,
+        )
         if not checks:
-            return False, "No universal checks were selected."
-        return True, "Universal structural validation is always applicable."
+            return False, "No export-based structural checks were selected."
+        return True, "Export-based structural validation is applicable."
 
     def run(self, context: ValidationContext) -> ValidationResult:
-        checks = _selected_subset(context.selected_checks, UNIVERSAL_CHECKS)
+        checks = _selected_subset(
+            context.selected_checks,
+            ALL_EXPORT_BASED_STRUCTURAL_CHECKS,
+        )
         payload = run_campaign_checks(
             file_path=context.file_path,
             checks=checks,
@@ -113,21 +119,7 @@ class TargetPointsReachableValidator(BaseValidator):
     def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
         if TARGETPOINTSREACHABLE not in context.selected_checks:
             return False, "Target-points reachability was not selected."
-
-        applicability = _validator_applicability(context)
-        if TARGETPOINTSREACHABLE in applicability:
-            enabled = bool(applicability[TARGETPOINTSREACHABLE])
-            return enabled, (
-                "Applicability comes from validator_applicability."
-                if enabled
-                else "validator_applicability disabled target-points reachability."
-            )
-
-        capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        if capabilities.get("uses_progression") is False:
-            return False, "Campaign explicitly does not use progression."
-
-        return True, "Target-points reachability is applicable."
+        return True, "Target-points reachability is export-computable."
 
     def run(self, context: ValidationContext) -> ValidationResult:
         native_result = run_native_targetpointsreachable_check(context.file_path)
@@ -139,63 +131,6 @@ class TargetPointsReachableValidator(BaseValidator):
         return ValidationResult(validator_name=self.name, success=True, payload=payload)
 
 
-class PointGatekeepingValidator(BaseValidator):
-    name = "point_gatekeeping"
-
-    def __init__(self) -> None:
-        self.service = PointGatekeepingService()
-
-    def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
-        capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        selected = _selected_subset(context.selected_checks, CAPABILITY_GATED_CHECKS)
-
-        if not selected and TARGETPOINTSREACHABLE not in context.selected_checks:
-            return False, "No progression-aware checks were selected."
-
-        if capabilities.get("uses_progression") is False:
-            return False, "Campaign explicitly does not use progression."
-
-        return True, "Point/gatekeeping reasoning is applicable."
-
-    def run(self, context: ValidationContext) -> ValidationResult:
-        payload = self.service.analyze(
-            campaign_file=context.file_path,
-            point_rules=context.point_rules,
-            task_roles=context.task_roles,
-        )
-        return ValidationResult(validator_name=self.name, success=True, payload=payload)
-
-
-class TTMValidator(BaseValidator):
-    name = TTMSTRUCTURE
-
-    def is_applicable(self, context: ValidationContext) -> tuple[bool, str]:
-        if TTMSTRUCTURE not in context.selected_checks:
-            return False, "TTM structure was not selected."
-
-        applicability = _validator_applicability(context)
-        if TTMSTRUCTURE in applicability:
-            enabled = bool(applicability[TTMSTRUCTURE])
-            return enabled, (
-                "Applicability comes from validator_applicability."
-                if enabled
-                else "validator_applicability disabled TTM."
-            )
-
-        capabilities = (context.capability_summary or {}).get("capabilities", {}) or {}
-        if capabilities.get("uses_ttm") is True:
-            return True, "TTM capability is enabled."
-
-        theory_tags = _theory_tags(context)
-        if "ttm" in theory_tags or "transtheoretical_model" in theory_tags:
-            return True, "Theory sources indicate TTM usage."
-
-        return False, "TTM is not applicable."
-
-    def run(self, context: ValidationContext) -> ValidationResult:
-        payload = run_campaign_checks(
-            file_path=context.file_path,
-            checks=[TTMSTRUCTURE],
-            export_excel=False,
-        )
-        return ValidationResult(validator_name=self.name, success=True, payload=payload)
+# Backward-compatible aliases for old imports/tests during cleanup.
+UniversalStructuralValidator = ExportStructuralValidator
+ConfigurationGatedStructuralValidator = ExportStructuralValidator

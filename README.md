@@ -95,7 +95,7 @@ Your browser should open automatically.
 
 ### 1. Install Python
 
-Install Python 3.11 or newer.
+Install Python 3.14 or newer.
 
 During installation, make sure to enable:
 

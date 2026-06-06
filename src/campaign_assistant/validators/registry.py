@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from campaign_assistant.validators.base import BaseValidator, ValidationContext
 from campaign_assistant.validators.packs import (
-    PointGatekeepingValidator,
+    ExportStructuralValidator,
     TargetPointsReachableValidator,
-    TTMValidator,
-    UniversalStructuralValidator,
 )
 
 
@@ -25,10 +23,22 @@ class ValidatorRegistry:
         return resolved
 
 
-def build_default_validator_registry() -> ValidatorRegistry:
+def build_default_validator_registry(*, include_legacy: bool = False) -> ValidatorRegistry:
+    """
+    Build the paper-release validator registry.
+
+    The include_legacy argument is kept only for backward-compatible call sites.
+    Legacy TTM validation is no longer registered.
+    """
     registry = ValidatorRegistry()
-    registry.register(UniversalStructuralValidator())
+    registry.register(ExportStructuralValidator())
     registry.register(TargetPointsReachableValidator())
-    registry.register(PointGatekeepingValidator())
-    registry.register(TTMValidator())
     return registry
+
+
+def build_legacy_validator_registry() -> ValidatorRegistry:
+    """
+    Legacy TTM validation has been removed from the paper-release scope.
+    Return an empty registry for backward-compatible imports.
+    """
+    return ValidatorRegistry()
