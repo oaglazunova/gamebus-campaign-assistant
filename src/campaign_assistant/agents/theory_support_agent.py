@@ -6,6 +6,11 @@ from campaign_assistant.agents.base import BaseAgent
 from campaign_assistant.agents.context_builder import format_llm_context_markdown
 from campaign_assistant.llm.base import LLMClient
 from campaign_assistant.theory_knowledge import load_theory_knowledge_pack
+from campaign_assistant.agents.question_types import (
+    is_bct_question,
+    is_outcome_question,
+    is_ttm_question,
+)
 
 
 THEORY_SUPPORT_SYSTEM_PROMPT = """
@@ -51,6 +56,122 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
     )
 
 
+def _counts_from_context(context: dict[str, Any]) -> dict[str, Any]:
+    structure = context.get("campaign_structure", {}) or {}
+    return structure.get("counts", {}) or {}
+
+
+def _outcome_safe_response(context: dict[str, Any]) -> str:
+    counts = _counts_from_context(context)
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "The campaign export and checker output cannot determine whether the campaign "
+        "will cause weight loss or other health outcomes. That requires intervention "
+        "content review and empirical evaluation.",
+        "",
+        "From the current export, I can only comment on visible design features such as "
+        "campaign structure, tasks, progression, and possible opportunities for feedback, "
+        "self-monitoring, goal setting, or support.",
+    ]
+
+    if counts:
+        lines.append("")
+        lines.append("Visible campaign structure:")
+        lines.append(f"- Waves: {counts.get('waves', 0)}")
+        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
+        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
+        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
+        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
+
+    lines.append("")
+    lines.append(
+        "To assess likely effectiveness, you would need the intervention rationale, "
+        "target population, detailed task content, intended behavior-change mechanisms, "
+        "outcome measures, and evaluation data."
+    )
+
+    return "\n".join(lines)
+
+
+def _bct_safe_response(context: dict[str, Any]) -> str:
+    counts = _counts_from_context(context)
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "From the export alone, I cannot reliably identify which BCTs were intentionally "
+        "designed into the campaign. I can suggest BCTs that may be useful to consider "
+        "when reviewing or improving the campaign.",
+        "",
+        "Candidate BCTs to consider:",
+        "- **Goal setting / action planning**: make target behaviours concrete and actionable.",
+        "- **Self-monitoring**: let users record or reflect on relevant behaviours.",
+        "- **Feedback on behaviour or outcomes**: show progress in a way users can understand.",
+        "- **Prompts/cues**: remind users at appropriate moments.",
+        "- **Graded tasks**: increase difficulty gradually.",
+        "- **Social support or social comparison**: use carefully if the campaign has group or team elements.",
+        "- **Rewards/incentives**: connect points or badges to meaningful behaviours, not only task completion.",
+        "- **Problem solving**: help users identify barriers and plan alternatives.",
+    ]
+
+    if counts:
+        lines.append("")
+        lines.append(
+            "The current export structure shows "
+            f"{counts.get('tasks', 0)} task(s), "
+            f"{counts.get('challenges', 0)} challenge/level item(s), and "
+            f"{counts.get('transitions', 0)} transition(s). "
+            "This structure may support BCT implementation, but it does not prove that "
+            "specific BCTs are present."
+        )
+
+    lines.append("")
+    lines.append(
+        "For a stronger assessment, use organizer-approved design context describing "
+        "target behaviours, intended techniques, and intervention rationale."
+    )
+
+    return "\n".join(lines)
+
+
+def _ttm_safe_response(context: dict[str, Any]) -> str:
+    counts = _counts_from_context(context)
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "I should not infer TTM alignment from waves, levels, or progression structure alone. "
+        "Those elements may support staged progression, but they do not by themselves show "
+        "that the campaign follows the Transtheoretical Model.",
+        "",
+        "To assess TTM alignment, I would need evidence such as:",
+        "- explicit stage labels or readiness logic;",
+        "- stage-specific task content;",
+        "- different support for precontemplation, contemplation, preparation, action, and maintenance;",
+        "- relapse or recycling paths;",
+        "- feedback adapted to the user's readiness to change.",
+    ]
+
+    if counts:
+        lines.append("")
+        lines.append("Visible campaign structure:")
+        lines.append(f"- Waves: {counts.get('waves', 0)}")
+        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
+        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
+        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
+        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
+
+    lines.append("")
+    lines.append(
+        "If you want to make the campaign more TTM-aligned, consider explicitly mapping "
+        "tasks and feedback to readiness stages and adding supportive relapse/recycling paths."
+    )
+
+    return "\n".join(lines)
+
+
 class TheorySupportAgent(BaseAgent):
     name = "theory_support_agent"
 
@@ -59,6 +180,15 @@ class TheorySupportAgent(BaseAgent):
         self.theory_knowledge = load_theory_knowledge_pack()
 
     def run(self, *, question: str, context: dict[str, Any]) -> str:
+        if is_outcome_question(question):
+            return _outcome_safe_response(context)
+
+        if is_bct_question(question):
+            return _bct_safe_response(context)
+
+        if is_ttm_question(question):
+            return _ttm_safe_response(context)
+
         if self.llm_client is None:
             return _fallback_without_llm(question, context)
 

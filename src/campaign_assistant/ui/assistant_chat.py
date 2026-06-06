@@ -1,4 +1,6 @@
 ﻿from __future__ import annotations
+
+import os
 from typing import Any
 
 import streamlit as st
@@ -10,6 +12,19 @@ from campaign_assistant.agents.context_builder import (
 from campaign_assistant.agents.assistant_coordinator import AssistantCoordinator
 from campaign_assistant.llm import create_llm_client, llm_enabled
 
+
+
+def _friendly_agent_name(agent_name: str) -> str:
+    labels = {
+        "campaign_support_agent": "Campaign Support Agent",
+        "theory_support_agent": "Theory Support Agent",
+    }
+    return labels.get(agent_name, agent_name)
+
+
+def _show_routing_footer() -> bool:
+    value = os.getenv("CAMPAIGN_ASSISTANT_SHOW_ROUTING", "true").strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -284,10 +299,18 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
             result=result,
         )
 
+        if not _show_routing_footer():
+            return response.text
+
+        friendly_agent = _friendly_agent_name(response.agent_name)
+        guard_note = ""
+        if getattr(response, "guard_applied", False):
+            guard_note = f" Response guard applied: `{response.guard_reason}`."
+
         return (
-            response.text
-            + "\n\n---\n"
-            + f"_Handled by: `{response.agent_name}` · Intent: `{response.intent}`_"
+                response.text
+                + "\n\n---\n"
+                + f"_Assistant route: `{response.intent}` via **{friendly_agent}**.{guard_note}_"
         )
 
     except Exception as exc:

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from campaign_assistant.agents.question_types import is_theory_or_design_question
+
 
 @dataclass(frozen=True)
 class RoutedIntent:
@@ -30,6 +32,25 @@ THEORY_KEYWORDS = [
     "intervention function",
     "behaviour change wheel",
     "behavior change wheel",
+    "good campaign",
+    "complicated",
+    "too complicated",
+    "complex",
+    "too complex",
+    "burden",
+    "user burden",
+    "participant burden",
+    "lose weight",
+    "loose weight",
+    "weight loss",
+    "obesity",
+    "effective",
+    "effectiveness",
+    "help people",
+    "health outcome",
+    "outcome",
+    "adherence",
+    "engagement",
 ]
 
 CAMPAIGN_SUPPORT_KEYWORDS = [
@@ -91,6 +112,13 @@ class IntentRouter:
 
     def route(self, question: str) -> RoutedIntent:
         q = _normalize(question)
+
+        if is_theory_or_design_question(question):
+            return RoutedIntent(
+                intent="theory_support",
+                agent_name="theory_support_agent",
+                reason="Matched theory/design/outcome question type.",
+            )
 
         theory_keyword = _contains_any(q, THEORY_KEYWORDS)
         if theory_keyword:
