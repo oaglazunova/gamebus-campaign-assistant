@@ -1,187 +1,217 @@
 # GameBus Campaign Assistant
 
-A local Windows-friendly assistant for checking **GameBus campaign Excel exports**.
+A local Streamlit app for inspecting **GameBus campaign Excel exports**.
 
-It wraps the existing GameBus campaign checker in a more user-friendly interface and shows results in a **chat-style web app** instead of only as an Excel error report.
-
-![ui_screen.png](docs/ui_screen.png)
+![UI screenshot](docs/ui_screen.png)
 
 ## What this tool does
 
-This app helps campaign editors and researchers inspect a downloaded GameBus campaign Excel file and quickly see:
+GameBus Campaign Assistant helps campaign organizers and researchers review a GameBus campaign configuration file.
 
-- which checks passed and failed,
-- what errors were found,
-- which issues are most important to fix first,
-- whether there are **TTM structure** problems,
-- and, optionally, download the traditional Excel error report.
+It can help you:
+
+* upload or download a GameBus campaign Excel export;
+* run export-based campaign checks;
+* see which checks passed or failed;
+* inspect detected findings;
+* ask one assistant chat about findings, campaign structure, possible improvements, or behavior-change theory;
+* generate a simple downloadable campaign flow diagram;
+* optionally use a local LLM through Ollama for richer explanations.
+
+The app is intended to support campaign review. It does **not** replace manual checking, scientific intervention design, or empirical evaluation.
 
 ## Who this is for
 
 This tool is intended for:
 
-- campaign editors,
-- researchers,
-- and other internal users working with GameBus campaign configuration files.
+* campaign organizers;
+* campaign editors;
+* researchers;
+* internal users working with GameBus campaign configuration files.
 
-It is especially useful for people who want a simpler, more guided way to run the checker without working directly in Python.
-
-## What this tool is **not** yet
-
-This is an early version.
-
-It currently **does not**:
-
-- edit campaigns directly in GameBus,
-- upload corrected files back into GameBus,
-- generate new campaign content,
-- compare two campaign files side by side,
-- or fully automate campaign design.
-
-Those features may be added later.
-
----
-
-## How it works
-
-1. Open the GameBus Campaign Assistant.
-2. Enter a campaign abbreviation or upload a campaign description Excel file exported from GameBus.
-3. Run the analysis.
-4. Read the issues in the chat interface.
-5. Optionally download the Excel error report.
-
----
-
-## Main features
-
-- Local web-based interface
-- Upload one GameBus campaign Excel file
-- Download campaign description from GameBus
-- Run the existing campaign checker
-- TTM structure checks
-- Chat-style explanation of problems
-- Optional Excel export of issues
-- Local storage of app settings
-
----
+It is especially useful for people who want a guided interface for running and interpreting campaign checks without working directly in Python.
 
 ## Current project status
 
-**Status:** early public release / alpha
+This version ([0.2.0]) is intentionally narrow and stable. It focuses on:
 
-This version is mainly focused on:
-- wrapping the existing checker,
-- making results easier to understand,
-- and preparing the codebase for future expansion.
+* export-based campaign inspection;
+* clearer presentation of checker results;
+* one assistant chat for follow-up questions;
+* advisory behavior-change theory support;
+* simple campaign-flow visualization.
 
----
-
-# Installation (Windows)
-
-## Option 1 - easiest way
-
-If you received prepared Windows scripts with this project:
-
-1. Download or unzip the project folder
-2. Double-click `scripts/install_windows.bat`
-3. Wait until installation finishes
-4. Double-click `scripts/run_app.bat`
-
-Your browser should open automatically.
+Older experimental features related to metadata sidecars, workspace readiness, patch generation, and metadata-based fix proposals are not part of this release.
 
 ---
 
-## Option 2 - manual installation
+# Installation
 
-### 1. Install Python
+For detailed Windows installation instructions, see:
 
-Install Python 3.14 or newer.
+* [`docs/installation_windows.md`](docs/installation_windows.md)
 
-During installation, make sure to enable:
+## Quick start on Windows
 
-- **Add Python to PATH**
+If you received prepared Windows scripts:
 
-### 2. Open the project folder
+1. Download or unzip the project folder.
+2. Double-click `scripts/install_windows.bat`.
+3. Wait until installation finishes.
+4. Double-click `scripts/run_app.bat`.
 
-Open a terminal in the project folder.
+The app should open in your browser.
 
-### 3. Create a virtual environment
+## Alternative manual start
 
-```powershell
-python -m venv .venv
-````
-
-### 4. Activate the virtual environment
-
-```powershell
-.venv\Scripts\activate
-```
-
-### 5. Install the project
-
-```powershell
-pip install -e .
-```
-
-### 6. Run the app
+Open a terminal in the project folder and run:
 
 ```powershell
 streamlit run src/campaign_assistant/app.py
+```
+
+The app should open at:
+
+```text
+http://localhost:8501
 ```
 
 ---
 
 # How to use the app
 
-## Step 1 - Start the app
+For a user-facing step-by-step guide, see:
 
-Launch the app using the provided script or the Streamlit command above.
+* [`docs/user_guide.md`](docs/user_guide.md)
 
-## Step 2 - Upload a campaign file
+Basic workflow:
 
-Upload a GameBus campaign Excel export (`.xlsx`).
+1. Open the app.
+2. Upload a GameBus campaign Excel export or download one from GameBus if this option is available.
+3. Select the checks to run.
+4. Click **Analyze campaign**.
+5. Review the Overview page.
+6. Inspect findings on the Findings page.
+7. Ask follow-up questions in the Assistant page.
+8. Optionally create and download a campaign flow diagram.
 
-## Step 3 - Run checks
+---
 
-Choose the checks you want to run, or run all checks.
+# Main features
 
-## Step 4 - Review the results
+## Overview page
 
-The assistant will summarize:
+The Overview page summarizes:
 
-* total issues found,
-* failed checks,
-* TTM issues,
-* and which problems should be fixed first.
+* campaign structure;
+* total number of issues;
+* failed and passed checks;
+* top-priority findings;
+* optional campaign flow diagram.
 
-## Step 5 - Ask follow-up questions
+## Findings page
 
-Examples:
+The Findings page shows detected issues in detail.
 
-* `Summarize the issues`
-* `Show TTM issues`
-* `Which checks failed?`
-* `What should I fix first?`
+It helps users inspect:
 
-## Step 6 - Export report (optional)
+* which check produced the finding;
+* where the issue appears;
+* why it may matter;
+* what should be reviewed first.
 
-You can download the Excel error report.
+## Assistant page
+
+The app has one Assistant chat window.
+
+The Assistant can answer questions about:
+
+* checker findings;
+* failed checks;
+* campaign structure;
+* what to inspect next;
+* possible campaign improvements;
+* BCTs;
+* COM-B;
+* TTM;
+* adherence, engagement, and participant burden.
+
+The Assistant automatically routes questions internally. Users do not need to choose an agent.
+
+## Campaign flow diagram
+
+The Overview page can generate a simple SVG diagram from the campaign export.
+
+The diagram shows:
+
+* levels/challenges;
+* visualization-based tracks;
+* success/standard transitions;
+* failure transitions;
+* task counts;
+* target points when available.
+
+The diagram can be downloaded as SVG or opened in a new browser tab.
 
 ---
 
 # Supported checks
 
-Depending on the selected options, the app can run checks such as:
+The current default checks are:
 
-* consistency checks
-* visualization internal checks
-* reachability checks
-* target-points-reachable checks
-* TTM structure checks
-* secret-related checks
-* spelling checks
+* `secrets`
+* `spellchecker`
+* `reachability`
+* `consistency`
+* `visualizationintern`
+* `targetpointsreachable`
 
-The exact behavior comes from the wrapped checker logic.
+The exact behavior comes from the wrapped GameBus checker logic.
+
+The checker output is the source of truth for detected export-level issues. If no issues are detected, this means only that the selected checks did not find issues. It does **not** prove that the campaign is optimal, theory-aligned, usable, or effective.
+
+---
+
+# LLM support
+
+LLM support is optional.
+
+The app can use a local Ollama model for richer assistant responses. If Ollama is unavailable or disabled, the app still works and uses deterministic fallback responses.
+
+Example Ollama setup:
+
+```powershell
+ollama serve
+ollama pull gemma3:1b
+```
+
+The configured model can be changed through environment variables, depending on your local setup.
+
+The Assistant is advisory. It should not override deterministic checker results.
+
+---
+
+# Guardrails and limitations
+
+The Assistant uses a fact-sheet and response-guard layer.
+
+This helps prevent high-risk errors such as:
+
+* claiming that the checker found issues when no issues were found;
+* claiming that a passed check failed;
+* claiming that a campaign will cause weight loss or other health outcomes;
+* claiming formal TTM, COM-B, or BCT alignment without explicit evidence.
+
+Current limitations:
+
+* the app does not edit campaigns directly in GameBus;
+* it does not upload corrected files back to GameBus;
+* it does not compare two campaign files;
+* it does not generate new campaign content;
+* it does not formally validate behavior-change theory alignment;
+* it cannot determine whether a campaign will cause weight loss or other health outcomes.
+
+Effectiveness claims require intervention-content review and empirical evaluation.
 
 ---
 
@@ -191,64 +221,46 @@ The exact behavior comes from the wrapped checker logic.
 src/
   campaign_assistant/
     app.py
-    config.py
-    storage.py
-    downloader.py
     checker/
     legacy/
+    agents/
+    diagram/
+    llm/
+    orchestration/
     ui/
 
 docs/
 tests/
-logs/
 scripts/
 ```
 
----
+Key documentation:
 
-# Documentation
-
-Additional documentation is available in the `docs/` folder.
-
-Suggested files include:
-
-* `docs/user-guide.md`
-* `docs/installation-windows.md`
-* `docs/legacy-checker.md`
-* `docs/ttm-checks.md`
-
----
-## Logging
-
-The app writes a session log to the local `logs/` folder in JSONL format.
-
-The log includes:
-- upload or download metadata
-- selected checks
-- user chat messages
-- assistant responses
-- checker summary
-- errors
-
-Please archive the log folder at the end of the testing and send it back together with the filled feedback template `docs/pilot_feedback_template.docx`.
-
----
-
-# Known limitations
-
-* This tool works with **downloaded campaign Excel files**, not live GameBus editing.
-* Not every GameBus-side issue can necessarily be inferred from the export alone.
-* The TTM checks currently assume the current known TTM structure.
-* This tool is currently designed primarily for **Windows** usage.
+* [`docs/installation_windows.md`](docs/installation_windows.md)
+* [`docs/user_guide.md`](docs/user_guide.md)
+* [`AGENTS.md`](AGENTS.md)
+* [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
 # Development
 
-## Install development dependencies
+## Install dependencies
 
 ```powershell
-pip install -e .[dev]
+pip install -r requirements.txt
+```
+
+## Install in editable mode
+
+```powershell
+pip install -e .
+```
+
+## Run the app
+
+```powershell
+streamlit run src/campaign_assistant/app.py
 ```
 
 ## Run tests
@@ -256,19 +268,8 @@ pip install -e .[dev]
 ```powershell
 pytest
 ```
-
----
-
-# Legacy checker
-
-This project wraps an earlier GameBus campaign checker: https://github.com/SergeAutexier/GameBusChecker
-
-The original checking logic is preserved and isolated in the `legacy/` part of the package, while the rest of this project provides:
-
-* a friendlier interface,
-* structured outputs,
-* prioritization,
-* and a base for future assistant features.
+[legacy_adapter.py](src/campaign_assistant/checker/legacy_adapter.py)
+The current test suite is aligned with the paper-release scope.
 
 ---
 
