@@ -97,3 +97,69 @@ def test_generic_guidance_is_used_when_issue_subtype_is_unknown():
 
     assert "Fix unreachable start or terminal levels" in text
     assert "Next level when target is met on time" in text
+
+
+
+def test_visualizationintern_same_visualization_different_label_gets_label_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "visualizationintern",
+            "message": (
+                "Reachable Challenge from some initial level is not in same visualization or not with same label:\n"
+                "Initial challenge visualization = '3476'; reachable challenge visualization = '3476'\n"
+                "Initial challenge labels = '524.0'; reachable challenge labels = '513.0'\n"
+            ),
+        }
+    )
+
+    assert "different label" in text
+    assert "Content editor → Labels" in text
+    assert "success and failure transitions" in text
+    assert "target points" not in text.lower()
+
+
+def test_target_points_unreachable_gets_specific_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "targetpointsreachable",
+            "message": (
+                "Challenge target points (720.0) cannot be reached with tasks "
+                "(max reachable is 30.0)"
+            ),
+        }
+    )
+
+    assert "Adjust target points or task rewards" in text
+    assert "Target points" in text
+    assert "Number of points to award" in text
+    assert "Reward count" in text
+
+
+def test_target_points_missing_target_gets_specific_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "targetpointsreachable",
+            "message": "Challenge no target points defined (None).",
+        }
+    )
+
+    assert "Fill missing target points" in text
+    assert "Level settings → Target points" in text
+
+
+def test_duplicate_secret_gets_specific_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "secrets",
+            "message": (
+                "Task 'Example task' has copies with the same secret 'example-secret', "
+                "but that have different names (see challenges ['1', '2'])"
+            ),
+        }
+    )
+
+    assert "Resolve a duplicate secret" in text
+    assert "Conditions → Value" in text
+    assert "distinct SECRET value" in text
+
+    

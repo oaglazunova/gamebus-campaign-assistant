@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -187,6 +189,43 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
         verification=_GENERIC_VERIFICATION,
     ),
 }
+
+
+def _extract_quoted_pair(pattern: str, text: str) -> tuple[str | None, str | None]:
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if not match:
+        return None, None
+    return match.group(1), match.group(2)
+
+
+def _visualizationintern_mismatch_kind(issue: dict[str, Any]) -> str:
+    """Classify visualizationintern mismatch using the concrete checker message."""
+    message = _issue_message(issue)
+
+    initial_visualization, reachable_visualization = _extract_quoted_pair(
+        r"Initial challenge visualization = '([^']*)'; reachable challenge visualization = '([^']*)'",
+        message,
+    )
+    initial_label, reachable_label = _extract_quoted_pair(
+        r"Initial challenge labels = '([^']*)'; reachable challenge labels = '([^']*)'",
+        message,
+    )
+
+    if (
+        initial_visualization is not None
+        and reachable_visualization is not None
+        and initial_visualization != reachable_visualization
+    ):
+        return "different_visualization"
+
+    if (
+        initial_label is not None
+        and reachable_label is not None
+        and initial_label != reachable_label
+    ):
+        return "different_label"
+
+    return "unknown"
 
 
 def _issue_message(issue: dict[str, Any]) -> str:
@@ -400,11 +439,58 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
 
     if check == VISUALIZATIONINTERN:
         if "not in same visualization" in message or "not with same label" in message:
+            mismatch_kind = _visualizationintern_mismatch_kind(issue)
+
+            if mismatch_kind == "different_label":
+                return GameBusFixGuidance(
+                    title="Fix a transition path that reaches a level with a different label",
+                    studio_location=(
+                        "Open the reported initial level in GameBus Studio.",
+                        "Open the reachable terminal level mentioned in the finding message.",
+                        "Use Content editor → Labels and Level settings.",
+                    ),
+                    fields_to_check=(
+                        "Content editor → Labels on the initial level.",
+                        "Content editor → Labels on the reachable terminal level.",
+                        "Level settings → Next level when target is met on time.",
+                        "Level settings → Next level when target is not met on time.",
+                    ),
+                    fix_steps=(
+                        "Compare the Labels field of the initial level and the reachable terminal level.",
+                        "Follow both success and failure transitions from the initial level; this checker follows both transition types.",
+                        "If the reachable terminal level should belong to the same progression branch, align the Labels value.",
+                        "If the reachable terminal level should not be in this branch, change the incorrect success or failure transition so the path reaches the intended terminal level.",
+                    ),
+                    verification=_GENERIC_VERIFICATION,
+                ).as_markdown()
+
+            if mismatch_kind == "different_visualization":
+                return GameBusFixGuidance(
+                    title="Fix a transition path that reaches a different visualization",
+                    studio_location=(
+                        "Open the reported initial level in GameBus Studio.",
+                        "Open the reachable terminal level mentioned in the finding message.",
+                        "Use Level settings to inspect success and failure transitions.",
+                    ),
+                    fields_to_check=(
+                        "The visualization/group shown in the level editor URL and page context.",
+                        "Level settings → Next level when target is met on time.",
+                        "Level settings → Next level when target is not met on time.",
+                    ),
+                    fix_steps=(
+                        "Follow both success and failure transitions from the initial level.",
+                        "Find the transition that leaves the intended visualization/group.",
+                        "Change that transition so it points to a level in the same visualization/group.",
+                        "If the reachable level really belongs to this branch, recreate or move it into the correct visualization/group rather than accepting a cross-visualization path.",
+                    ),
+                    verification=_GENERIC_VERIFICATION,
+                ).as_markdown()
+
             return GameBusFixGuidance(
-                title="Keep the reachable terminal level inside the intended visualization/label group",
+                title="Fix a level path that leaves the intended visualization or label group",
                 studio_location=(
                     "Open the reported initial level in GameBus Studio.",
-                    "Open the reachable terminal level mentioned in the finding.",
+                    "Open the reachable terminal level mentioned in the finding message.",
                     "Use Content editor and Level settings.",
                 ),
                 fields_to_check=(
@@ -414,11 +500,9 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
                     "The visualization/group shown in the editor URL and page context.",
                 ),
                 fix_steps=(
-                    "Compare the Labels value of the initial level and the reachable terminal level.",
-                    "Follow both success and failure transitions from the initial level; this check follows both kinds of transition.",
-                    "If the path should stay inside one visualization/label group, change the incorrect transition.",
-                    "If the transition is intended, align the Labels value where appropriate.",
-                    "If the terminal level belongs to the wrong visualization/group, move/recreate the level in the correct group rather than accepting the cross-group path.",
+                    "Follow both success and failure transitions from the initial level.",
+                    "Compare the visualization/group and Labels values of the initial and reachable terminal levels.",
+                    "Fix either the transition path or the Labels value, depending on the intended progression structure.",
                 ),
                 verification=_GENERIC_VERIFICATION,
             ).as_markdown()
