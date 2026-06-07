@@ -143,8 +143,6 @@ def render_assistant_page_status(result: dict[str, Any], message_count: int) -> 
     total = _total_issues(result)
     checks_run = result.get("checks_run", []) or []
 
-    st.subheader("Assistant")
-
     if total > 0:
         st.info(
             "Ask about the current campaign analysis, detected findings, "

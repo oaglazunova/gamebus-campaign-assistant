@@ -87,3 +87,33 @@ def test_guard_blocks_strong_outcome_claim(minimal_analysis_result: dict) -> Non
     assert guard.reason == "unsupported_outcome_claim"
     assert guard.replacement_text is not None
     assert "cannot determine whether the campaign will cause weight loss" in guard.replacement_text
+
+
+def test_guard_does_not_treat_inconsistency_as_consistency_check_claim(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 1
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["consistency"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 1}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="Explain this finding.",
+        answer=(
+            "This secrets finding points to an inconsistency: the same secret "
+            "is used by copied tasks with different names."
+        ),
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True

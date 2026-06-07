@@ -5,11 +5,12 @@ from typing import Any
 
 from campaign_assistant.agents.campaign_support_agent import CampaignSupportAgent
 from campaign_assistant.agents.context_builder import build_llm_context
-from campaign_assistant.agents.intent_router import IntentRouter, RoutedIntent
+from campaign_assistant.agents.intent_router import IntentRouter
 from campaign_assistant.agents.theory_support_agent import TheorySupportAgent
 from campaign_assistant.llm.base import LLMClient
 from campaign_assistant.agents.fact_sheet import build_fact_sheet
 from campaign_assistant.agents.response_guard import validate_agent_response
+from campaign_assistant.agents.finding_explainer import explain_prepared_finding
 
 
 @dataclass
@@ -45,6 +46,18 @@ class AssistantCoordinator:
         route = self.router.route(question)
         context = build_llm_context(result)
         facts = build_fact_sheet(result)
+
+        prepared_finding_answer = explain_prepared_finding(question)
+
+        if prepared_finding_answer is not None:
+            return AssistantResponse(
+                text=prepared_finding_answer,
+                agent_name="campaign_support_agent",
+                intent="campaign_support",
+                routing_reason="Prepared finding question answered deterministically.",
+                guard_applied=False,
+                guard_reason=None,
+            )
 
         if route.agent_name == "theory_support_agent":
             answer = self.theory_support_agent.run(

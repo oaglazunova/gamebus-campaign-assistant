@@ -158,6 +158,23 @@ def _unsupported_theory_replacement(question: str, facts: dict[str, Any]) -> str
     )
 
 
+def _check_name_pattern(check_name: str) -> str:
+    """
+    Match a checker name as a standalone token.
+
+    This prevents false positives such as:
+    - check name 'consistency' matching the word 'inconsistency'
+    - check name 'secrets' matching unrelated longer words
+    """
+    escaped = re.escape(check_name)
+
+    # Normal word-style checks.
+    if check_name.isalpha():
+        return rf"(?<![A-Za-z0-9_]){escaped}(?![A-Za-z0-9_])"
+
+    return rf"\b{escaped}\b"
+
+
 def _claims_issue_for_non_failed_check(answer: str, facts: dict[str, Any]) -> str | None:
     checker = facts.get("checker_facts", {}) or {}
 
@@ -190,19 +207,26 @@ def _claims_issue_for_non_failed_check(answer: str, facts: dict[str, Any]) -> st
         "challenges",
     ]
 
+    problem_group = "|".join(re.escape(word) for word in problem_words)
+
     for check_name in _CHECK_NAMES:
         if check_name in allowed_problem_checks:
             continue
 
-        if check_name not in answer_lower:
+        check_pattern = _check_name_pattern(check_name)
+
+        # Do not use plain substring matching here. For example, the check name
+        # "consistency" must not match "inconsistency".
+        if not re.search(check_pattern, answer_lower):
             continue
 
-        # Detect claims such as "reachability issue", "reachability challenges",
-        # "issue with reachability", "problems in reachability".
-        problem_group = "|".join(re.escape(word) for word in problem_words)
-
-        direct_pattern = rf"\b{re.escape(check_name)}\b[\s\S]{{0,120}}\b({problem_group})\b"
-        reverse_pattern = rf"\b({problem_group})\b[\s\S]{{0,120}}\b{re.escape(check_name)}\b"
+        # Detect claims such as:
+        # - "reachability issue"
+        # - "reachability challenges"
+        # - "issue with reachability"
+        # - "problems in reachability"
+        direct_pattern = rf"{check_pattern}[\s\S]{{0,120}}\b({problem_group})\b"
+        reverse_pattern = rf"\b({problem_group})\b[\s\S]{{0,120}}{check_pattern}"
 
         if re.search(direct_pattern, answer_lower) or re.search(reverse_pattern, answer_lower):
             return check_name

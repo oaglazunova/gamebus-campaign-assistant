@@ -4,17 +4,8 @@ from typing import Any
 
 import streamlit as st
 
+from campaign_assistant.checker.check_metadata import check_hint
 from campaign_assistant.checker.schema import DEFAULT_CHECKS, FRIENDLY_CHECK_NAMES
-
-
-_CHECK_DESCRIPTIONS = {
-    "secrets": "Checks that task conditions using secrets are internally consistent.",
-    "spellchecker": "Checks task and challenge text for obvious spelling issues.",
-    "reachability": "Checks whether configured campaign progression can be reached through transitions.",
-    "consistency": "Checks consistency of progression and transition structure.",
-    "visualizationintern": "Checks transition integrity within and across visualizations.",
-    "targetpointsreachable": "Checks whether configured challenge target points can be reached with available task points.",
-}
 
 
 def _previous_selected_checks(result: dict[str, Any] | None) -> list[str] | None:
@@ -84,7 +75,7 @@ def render_check_picker(result: dict[str, Any] | None) -> list[str]:
 
     for check_id in DEFAULT_CHECKS:
         label = FRIENDLY_CHECK_NAMES.get(check_id, check_id)
-        description = _CHECK_DESCRIPTIONS.get(check_id, "")
+        description = check_hint(check_id)
 
         st.checkbox(
             label,
