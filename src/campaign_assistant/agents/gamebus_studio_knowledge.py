@@ -25,15 +25,12 @@ class GameBusStudioFact:
     topic: str
     applies_to_checks: tuple[str, ...]
     text: str
-    source_note: str
+
 
 
 @dataclass(frozen=True)
 class GameBusStudioFieldFact:
-    """Derived field-level GameBus Studio knowledge.
-
-    These facts are derived from inspected GameBus Studio / campaign editor code.
-    They are not copied source code.
+    """Derived GameBus Studio knowledge for grounded explanations.
     """
 
     ui_label: str
@@ -42,13 +39,12 @@ class GameBusStudioFieldFact:
     explanation: str
     applies_to_checks: tuple[str, ...]
     keywords: tuple[str, ...]
-    source_note: str
 
     def as_markdown(self) -> str:
         return (
             f"- **{self.ui_label}**"
             f" (`{self.export_field}`, {self.editor_area}): "
-            f"{self.explanation} Source note: {self.source_note}"
+            f"{self.explanation}"
         )
 
 
@@ -66,9 +62,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "GameBus Studio edits a level/challenge in the campaign editor under a campaign, "
             "visualization/group, and challenge/level. The finding URL points directly to this editor."
         ),
-        source_note=(
-            "Derived from the campaign editor route for campaign visualization challenges."
-        ),
     ),
     GameBusStudioFact(
         topic="content_editor_fields",
@@ -77,9 +70,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "The level Content editor exposes Name, Labels, and Description. "
             "The checker export column 'name' corresponds to the level Name. "
             "The checker export column 'labels' corresponds to selected Content editor Labels."
-        ),
-        source_note=(
-            "Derived from the challenge editor Content editor and campaign export mapping."
         ),
     ),
     GameBusStudioFact(
@@ -97,9 +87,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "Evaluate failure interval (exported as evaluate_fail_every_x_minutes), and "
             "Next level when target is not met on time (exported as failure_next)."
         ),
-        source_note=(
-            "Derived from the challenge editor Level settings section and campaign export mapping."
-        ),
     ),
     GameBusStudioFact(
         topic="failure_transition_validation",
@@ -107,9 +94,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
         text=(
             "GameBus Studio treats Evaluate failure interval and Next level when target is not met "
             "on time as paired settings: if one is set, the other is required."
-        ),
-        source_note=(
-            "Derived from the challenge editor form validation schema."
         ),
     ),
     GameBusStudioFact(
@@ -120,9 +104,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "campaign wave as the current visualization. This means transition choices are wave-scoped "
             "in the editor."
         ),
-        source_note=(
-            "Derived from the challenge editor server load function."
-        ),
     ),
     GameBusStudioFact(
         topic="task_editor_fields",
@@ -132,9 +113,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "media/H5P fields, Reward count, Time window for resetting the reward count, "
             "Number of points to award, Allowed activity types, Allowed data sources, image-required flag, "
             "and Conditions."
-        ),
-        source_note=(
-            "Derived from the task editor component inside the challenge editor."
         ),
     ),
     GameBusStudioFact(
@@ -147,9 +125,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "dataproviders; Allowed activity types as activityschemes_allowed; and task Conditions "
             "as bracketed triples [PROPERTY, OPERATOR, VALUE]."
         ),
-        source_note=(
-            "Derived from the campaign export mapping for tasks."
-        ),
     ),
     GameBusStudioFact(
         topic="conditions_editor",
@@ -160,9 +135,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "property type. A SECRET condition relevant for the secrets checker is represented in the "
             "export as [SECRET, EQUAL, value]."
         ),
-        source_note=(
-            "Derived from the task condition editor and campaign export mapping."
-        ),
     ),
     GameBusStudioFact(
         topic="data_provider_filtering",
@@ -171,9 +143,6 @@ GAMEBUS_STUDIO_FACTS: tuple[GameBusStudioFact, ...] = (
             "Allowed data sources depend on the selected Allowed activity types. When saving a task, "
             "GameBus Studio filters submitted data providers and condition properties against the permissions "
             "allowed for the selected activity types."
-        ),
-        source_note=(
-            "Derived from the task editor and rule-save action."
         ),
     ),
 )
@@ -196,7 +165,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "use this level as the start",
             "start of the level structure",
         ),
-        source_note="Derived from the GameBus Studio challenge editor Level settings and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Next level when target is met on time",
@@ -217,7 +185,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "reachable",
             "terminal level",
         ),
-        source_note="Derived from the GameBus Studio challenge editor Level settings and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Next level when target is not met on time",
@@ -236,7 +203,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "next level when target is not met on time",
             "failure path",
         ),
-        source_note="Derived from the GameBus Studio challenge editor Level settings and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Evaluate failure interval",
@@ -256,7 +222,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "failure interval",
             "time interval",
         ),
-        source_note="Derived from the GameBus Studio challenge editor Level settings and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Target points",
@@ -273,7 +238,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "points target",
             "unreachable target",
         ),
-        source_note="Derived from the GameBus Studio challenge editor Level settings and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Name",
@@ -291,7 +255,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "spelling",
             "spellchecker",
         ),
-        source_note="Derived from the GameBus Studio Content editor and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Labels",
@@ -310,7 +273,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "visualization intern",
             "visualizationintern",
         ),
-        source_note="Derived from the GameBus Studio Content editor and export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Short task description",
@@ -329,7 +291,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "spelling",
             "duplicate secret",
         ),
-        source_note="Derived from the GameBus Studio task editor and task export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Reward count",
@@ -347,7 +308,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "repeatable",
             "task repetition",
         ),
-        source_note="Derived from the GameBus Studio task editor and task export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Time window for resetting the reward count",
@@ -366,7 +326,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "reset window",
             "days between fire",
         ),
-        source_note="Derived from the GameBus Studio task editor and task export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Number of points to award",
@@ -384,7 +343,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "task points",
             "award points",
         ),
-        source_note="Derived from the GameBus Studio task editor and task export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Allowed data sources",
@@ -403,7 +361,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "gamebus studio",
             "secret not available",
         ),
-        source_note="Derived from the GameBus Studio task editor and task export mapping.",
     ),
     GameBusStudioFieldFact(
         ui_label="Conditions",
@@ -424,7 +381,6 @@ GAMEBUS_STUDIO_FIELD_FACTS: tuple[GameBusStudioFieldFact, ...] = (
             "secret condition",
             "[secret, equal",
         ),
-        source_note="Derived from the GameBus Studio task condition editor and task export mapping.",
     ),
 )
 
@@ -446,11 +402,6 @@ def gamebus_studio_facts_markdown_for_check(check_id: str | None) -> str:
     facts = gamebus_studio_facts_for_check(check_id)
     if not facts:
         return ""
-
-    lines = ["GameBus Studio facts derived from inspected code:"]
-    for fact in facts:
-        lines.append(f"- {fact.text} Source note: {fact.source_note}")
-    return "\n".join(lines)
 
 
 def gamebus_studio_facts_markdown_for_issue(issue: dict) -> str:
@@ -480,7 +431,7 @@ def gamebus_studio_field_facts_markdown_for_check(check_id: str | None) -> str:
     if not facts:
         return ""
 
-    lines = ["GameBus Studio field facts derived from inspected code:"]
+    lines = ["GameBus Studio facts:"]
     lines.extend(fact.as_markdown() for fact in facts)
     return "\n".join(lines)
 
@@ -516,7 +467,7 @@ def gamebus_studio_field_facts_markdown_for_question(
     if not facts:
         return ""
 
-    lines = ["Relevant GameBus Studio field facts derived from inspected code:"]
+    lines = ["Relevant GameBus Studio facts:"]
     lines.extend(fact.as_markdown() for fact in facts)
     return "\n".join(lines)
 

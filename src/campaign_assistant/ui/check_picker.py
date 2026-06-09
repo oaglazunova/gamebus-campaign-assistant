@@ -44,34 +44,12 @@ def _ensure_widget_defaults(selected_checks: list[str]) -> None:
             st.session_state[key] = check_id in selected
 
 
-# def _apply_recommended() -> None:
-#     for check_id in DEFAULT_CHECKS:
-#         st.session_state[f"check-picker-{check_id}"] = True
-#
-#
-# def _clear_all() -> None:
-#     for check_id in DEFAULT_CHECKS:
-#         st.session_state[f"check-picker-{check_id}"] = False
-
-
 def render_check_picker(result: dict[str, Any] | None) -> list[str]:
     """
     Render a simple checklist of deterministic export-based checks.
     """
     selected_checks = _initial_selected_checks(result)
     _ensure_widget_defaults(selected_checks)
-
-    # col1, col2 = st.columns(2)
-    #
-    # with col1:
-    #     if st.button("Use recommended", key="checks-use-recommended", use_container_width=True):
-    #         _apply_recommended()
-    #         st.rerun()
-    #
-    # with col2:
-    #     if st.button("Clear all", key="checks-clear-all", use_container_width=True):
-    #         _clear_all()
-    #         st.rerun()
 
     for check_id in DEFAULT_CHECKS:
         label = FRIENDLY_CHECK_NAMES.get(check_id, check_id)

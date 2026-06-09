@@ -33,7 +33,7 @@ Strict boundaries:
 - Deterministic GameBus Studio fix guidance is authoritative for where to inspect and how to fix deterministic checker findings.
 - If deterministic GameBus Studio fix guidance is available, use it as the basis for repair advice.
 - You may rephrase deterministic guidance in clearer language, but do not add unsupported GameBus Studio fields, tabs, or repair steps.
-- GameBus Studio source facts are derived from inspected GameBus code and may be used to explain field meanings, editor locations, and export mappings.
+- GameBus Studio facts may be used to explain field meanings, editor locations, and export mappings.
 - Do not claim that a GameBus Studio field, tab, route, or save behavior exists unless it is present in deterministic guidance, GameBus Studio source facts, or the checker context.
 - If the user asks for a GameBus behavior that is not covered by the source facts, say that the current local source facts do not establish it.
 - Export structure counts are descriptive facts, not errors by themselves.
@@ -189,7 +189,7 @@ def _deterministic_guidance_answer(
 
     if source_facts:
         lines.append("")
-        lines.append("**Relevant GameBus Studio source facts**")
+        lines.append("**Relevant GameBus Studio facts**")
         lines.append(str(source_facts))
 
     return "\n".join(lines)
@@ -286,13 +286,13 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
     else:
         lines.append("")
         lines.append(
-            "No deterministic GameBus Studio fix guidance is available for the highest-priority finding."
+            "No deterministic GameBus Studio guidance is available for the highest-priority finding."
         )
 
     source_facts = highest.get("gamebus_studio_source_facts")
     if source_facts:
         lines.append("")
-        lines.append("Relevant GameBus Studio source facts:")
+        lines.append("Relevant GameBus Studio facts:")
         lines.append(str(source_facts))
 
     return "\n".join(lines)
