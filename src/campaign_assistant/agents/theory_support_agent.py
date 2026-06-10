@@ -8,8 +8,12 @@ from campaign_assistant.llm.base import LLMClient
 from campaign_assistant.theory_knowledge import load_theory_knowledge_pack
 from campaign_assistant.agents.question_types import (
     is_bct_question,
+    is_broad_theory_grounding_question,
+    is_com_b_question,
     is_outcome_question,
+    is_sdt_question,
     is_ttm_question,
+    mentions_specific_theory,
 )
 
 
@@ -18,7 +22,7 @@ You are the Theory Support Agent for the GameBus Campaign Assistant.
 
 Your role:
 - Provide advisory behavior-change theory reflection.
-- Help users reason about possible alignment with BCTs, COM-B, TTM, or related behavior-change concepts.
+- Help users reason about possible alignment with BCTs, COM-B, TTM, Self-Determination Theory, or related behavior-change concepts.
 - Suggest how a campaign could be made more theory-grounded.
 - Distinguish observed campaign content from inferred interpretation.
 
@@ -59,6 +63,48 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
 def _counts_from_context(context: dict[str, Any]) -> dict[str, Any]:
     structure = context.get("campaign_structure", {}) or {}
     return structure.get("counts", {}) or {}
+
+
+def _is_weak_llm_answer(text: str) -> bool:
+    normalized = " ".join(str(text or "").strip().lower().split())
+    normalized = normalized.strip(" .!?,;:")
+
+    if not normalized:
+        return True
+
+    weak_exact = {
+        "ok",
+        "okay",
+        "sure",
+        "yes",
+        "no",
+        "i see",
+        "understood",
+        "got it",
+        "noted",
+    }
+
+    if normalized in weak_exact:
+        return True
+
+    weak_prefixes = [
+        "okay",
+        "sure",
+        "yes",
+        "i can help",
+        "i can help with that",
+    ]
+
+    # Catches "Okay, ..." only if there is no substantive continuation.
+    if normalized in weak_prefixes:
+        return True
+
+    # Catches short non-answers such as "Okay, understood" but not "Mock answer".
+    tokens = normalized.split()
+    if len(tokens) <= 3 and all(token in weak_exact for token in tokens):
+        return True
+
+    return False
 
 
 def _outcome_safe_response(context: dict[str, Any]) -> str:
@@ -172,6 +218,83 @@ def _ttm_safe_response(context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _theory_clarification_response() -> str:
+    return (
+        "I can help with that, but theory grounding depends on the framework. "
+        "Which theory or framework should I use: TTM, COM-B, BCT Taxonomy, "
+        "Self-Determination Theory, or another framework?"
+    )
+
+
+def _com_b_safe_response(context: dict[str, Any]) -> str:
+    counts = _counts_from_context(context)
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "For COM-B, I would review whether the campaign supports:",
+        "- **Capability**: users have the knowledge, skills, and confidence needed to perform the target behaviour;",
+        "- **Opportunity**: the campaign helps users deal with practical, social, or environmental barriers;",
+        "- **Motivation**: the campaign supports intention, habit formation, feedback, and meaningful reasons to act.",
+        "",
+        "From the export alone, I cannot confirm that the campaign is COM-B-aligned. "
+        "The export shows structure, tasks, levels, and transitions, but it does not fully show the intervention rationale "
+        "or the intended mechanism of action.",
+    ]
+
+    if counts:
+        lines.append("")
+        lines.append("Visible campaign structure:")
+        lines.append(f"- Waves: {counts.get('waves', 0)}")
+        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
+        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
+        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
+        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
+
+    lines.append("")
+    lines.append(
+        "A useful next step is to map each campaign task to one or more COM-B components "
+        "and check whether the campaign has enough support for capability, opportunity, and motivation."
+    )
+
+    return "\n".join(lines)
+
+
+
+def _sdt_safe_response(context: dict[str, Any]) -> str:
+    counts = _counts_from_context(context)
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "For Self-Determination Theory, I would review whether the campaign supports:",
+        "- **Autonomy**: users experience meaningful choice, personal relevance, and non-controlling guidance;",
+        "- **Competence**: users receive achievable tasks, clear feedback, and a sense of progress or mastery;",
+        "- **Relatedness**: users feel socially supported, connected, or recognized without excessive pressure.",
+        "",
+        "From the export alone, I cannot confirm that the campaign is SDT-aligned. "
+        "The export shows structure, tasks, levels, and transitions, but it does not fully show tone, rationale, "
+        "participant choice, or how feedback is experienced by users.",
+    ]
+
+    if counts:
+        lines.append("")
+        lines.append("Visible campaign structure:")
+        lines.append(f"- Waves: {counts.get('waves', 0)}")
+        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
+        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
+        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
+        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
+
+    lines.append("")
+    lines.append(
+        "A useful next step is to map each task and feedback message to autonomy, competence, "
+        "and relatedness. Also check whether points, levels, and rewards feel supportive rather than controlling."
+    )
+
+    return "\n".join(lines)
+
+
 class TheorySupportAgent(BaseAgent):
     name = "theory_support_agent"
 
@@ -180,6 +303,12 @@ class TheorySupportAgent(BaseAgent):
         self.theory_knowledge = load_theory_knowledge_pack()
 
     def run(self, *, question: str, context: dict[str, Any]) -> str:
+        if (
+                is_broad_theory_grounding_question(question)
+                and not mentions_specific_theory(question)
+        ):
+            return _theory_clarification_response()
+
         if is_outcome_question(question):
             return _outcome_safe_response(context)
 
@@ -188,6 +317,12 @@ class TheorySupportAgent(BaseAgent):
 
         if is_ttm_question(question):
             return _ttm_safe_response(context)
+
+        if is_com_b_question(question):
+            return _com_b_safe_response(context)
+
+        if is_sdt_question(question):
+            return _sdt_safe_response(context)
 
         if self.llm_client is None:
             return _fallback_without_llm(question, context)
@@ -225,14 +360,10 @@ additional campaign-design information would be needed.
                 + _fallback_without_llm(question, context)
             )
 
-        if not response.text.strip():
-            return (
-                "This is advisory theory-oriented feedback, not formal validation.\n\n"
-                "The LLM returned an empty response. Try rephrasing the theory question "
-                "or check the configured Ollama model."
-            )
-
         answer = response.text.strip()
+
+        if _is_weak_llm_answer(answer):
+            return _fallback_without_llm(question, context)
 
         required_prefix = "This is advisory theory-oriented feedback, not formal validation."
         if required_prefix.lower() not in answer.lower():

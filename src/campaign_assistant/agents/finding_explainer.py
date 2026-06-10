@@ -4,6 +4,7 @@ import re
 
 
 _FIELD_NAMES = [
+    "Deterministic GameBus Studio fix guidance",
     "Challenge ID",
     "Wave ID",
     "Check",
@@ -26,7 +27,13 @@ def _parse_prepared_finding_question(question: str) -> dict[str, str]:
 
     for match in pattern.finditer(question or ""):
         key = match.group(1).strip().lower()
-        value = " ".join(match.group(2).strip().split())
+        raw_value = match.group(2).strip()
+
+        if key == "deterministic gamebus studio fix guidance":
+            value = raw_value
+        else:
+            value = " ".join(raw_value.split())
+
         parsed[key] = value
 
     return parsed
@@ -35,6 +42,94 @@ def _parse_prepared_finding_question(question: str) -> dict[str, str]:
 def is_prepared_finding_question(question: str) -> bool:
     parsed = _parse_prepared_finding_question(question)
     return bool(parsed.get("check") and parsed.get("finding"))
+
+
+def _what_this_means(check: str, finding: str) -> str | None:
+    check_normalized = " ".join(str(check or "").lower().split())
+    finding_normalized = " ".join(str(finding or "").lower().split())
+
+    if check_normalized == "secrets":
+        if "has no secret" in finding_normalized:
+            return (
+                "This finding means that the task does not have a SECRET condition. "
+                "In GameBus, a secret is often used to identify or validate a specific task/action. "
+                "Without a task-specific secret, the task may be harder to distinguish from other tasks "
+                "or may not behave as intended in the campaign logic."
+            )
+
+        if "same secret" in finding_normalized or "duplicate" in finding_normalized:
+            return (
+                "This finding means that copied or related tasks use the same secret value, "
+                "but their task names differ. In GameBus, a secret is often used to identify or validate "
+                "a task/action. If the same secret is reused for tasks with different names, it may be unclear "
+                "whether these are intentionally the same action or accidentally inconsistent copies."
+            )
+
+        return (
+            "This finding means that the checker found a possible problem with a task SECRET condition. "
+            "In GameBus, secrets are often used to identify or validate task-specific actions, so they should "
+            "be meaningful, consistent, and unique where needed."
+        )
+
+    if check_normalized == "targetpointsreachable":
+        if "no target points" in finding_normalized or "target points defined" in finding_normalized:
+            return (
+                "This finding means that the challenge has no numeric target points configured. "
+                "The target-points checker needs this value to determine whether participants can realistically "
+                "reach the level target from the available task points."
+            )
+
+        if "not reachable" in finding_normalized or "cannot be reached" in finding_normalized:
+            return (
+                "This finding means that the configured target may be too high for the points available from "
+                "the tasks in this challenge. Participants may be unable to reach the level target even if they "
+                "complete the available tasks as intended."
+            )
+
+        return (
+            "This finding means that the target-points logic for a challenge may be impossible, undefined, "
+            "or inconsistent with the available tasks."
+        )
+
+    if check_normalized == "visualizationintern":
+        return (
+            "This finding means that following the level transitions from an initial level reaches a terminal "
+            "level with a different visualization or label structure than expected. This may indicate that the "
+            "progression path crosses into the wrong branch, or that labels/transitions do not match the intended "
+            "campaign flow."
+        )
+
+    if check_normalized == "reachability":
+        if "terminal challenge not reachable" in finding_normalized:
+            return (
+                "This finding means that a terminal level exists, but no initial level can reach it by following "
+                "success transitions. Participants may therefore never arrive at this intended end level."
+            )
+
+        if "initial challenge" in finding_normalized and "terminal" in finding_normalized:
+            return (
+                "This finding means that an initial level does not lead to any terminal level through success "
+                "transitions. Participants may get stuck in an incomplete progression path."
+            )
+
+        return (
+            "This finding means that the success-transition structure may not connect initial and terminal levels "
+            "as expected."
+        )
+
+    if check_normalized == "consistency":
+        return (
+            "This finding means that the level transition settings do not match the checker’s expected structural "
+            "rules for initial or terminal levels."
+        )
+
+    if check_normalized == "ttm":
+        return (
+            "This finding means that the selected level progression does not match the HW8 long-term-campaign "
+            "TTM-like structure expected by this optional checker."
+        )
+
+    return None
 
 
 def explain_prepared_finding(question: str) -> str | None:
@@ -47,11 +142,10 @@ def explain_prepared_finding(question: str) -> str | None:
     challenge = parsed.get("challenge")
     challenge_id = parsed.get("challenge id")
     wave_id = parsed.get("wave id")
+    guidance = parsed.get("deterministic gamebus studio fix guidance")
 
     if not check or not finding:
         return None
-
-    check_normalized = check.lower().strip()
 
     lines = [
         "This explanation is based on the selected checker finding.",
@@ -75,94 +169,24 @@ def explain_prepared_finding(question: str) -> str | None:
         lines.append("")
         lines.append("**Location:** " + ", ".join(location_parts) + ".")
 
-    lines.append("")
-    lines.append("**What this means:**")
+    meaning = _what_this_means(check, finding)
+    if meaning:
+        lines.append("")
+        lines.append("**What this means:**")
+        lines.append(meaning)
 
-    if check_normalized == "secrets":
-        lines.append(
-            "This finding means that copied or related tasks use the same secret value, "
-            "but their task names differ. In GameBus, a secret is often used to identify "
-            "or validate a task/action. If the same secret is reused for tasks with different "
-            "names, it may be unclear whether these are intentionally the same action or "
-            "accidentally inconsistent copies."
-        )
+    if guidance:
         lines.append("")
         lines.append("**What to inspect next:**")
-        lines.append(
-            "1. Open the listed challenges and compare the tasks that use this secret."
-        )
-        lines.append(
-            "2. Check whether the different task names are intentional translations/variants "
-            "or accidental copy inconsistencies."
-        )
-        lines.append(
-            "3. If they are meant to be the same task, align the task names or document the naming convention."
-        )
-        lines.append(
-            "4. If they are meant to be different tasks, consider using distinct secrets so they are not confused."
-        )
-
-    elif check_normalized == "reachability":
-        lines.append(
-            "This finding means that the checker detected a progression or navigation problem: "
-            "a level/challenge may not be reachable from the initial campaign path."
-        )
         lines.append("")
-        lines.append("**What to inspect next:**")
-        lines.append("1. Inspect the source and target challenges involved in the finding.")
-        lines.append("2. Check the success and failure transitions.")
-        lines.append("3. Verify whether the level should be reachable in the active campaign flow.")
-
-    elif check_normalized == "targetpointsreachable":
-        lines.append(
-            "This finding means that the target-points logic for a challenge may be impossible, "
-            "undefined, or inconsistent with the available tasks."
-        )
-        lines.append("")
-        lines.append("**What to inspect next:**")
-        lines.append("1. Check the challenge target points.")
-        lines.append("2. Check the points available from tasks in that challenge.")
-        lines.append("3. Verify whether the participant can realistically reach the target.")
-
-    elif check_normalized == "visualizationintern":
-        lines.append(
-            "This finding means that something inside a visualization may be structurally inconsistent, "
-            "for example links between levels, labels, or challenge placement inside the visualization."
-        )
-        lines.append("")
-        lines.append("**What to inspect next:**")
-        lines.append("1. Open the named visualization.")
-        lines.append("2. Inspect the listed challenge and its neighboring levels.")
-        lines.append("3. Check whether the visualization structure matches the intended campaign flow.")
-
-    elif check_normalized == "consistency":
-        lines.append(
-            "This finding means that the checker detected an internal inconsistency in the campaign export."
-        )
-        lines.append("")
-        lines.append("**What to inspect next:**")
-        lines.append("1. Inspect the affected campaign element.")
-        lines.append("2. Compare the referenced IDs, names, and linked objects.")
-        lines.append("3. Check whether the inconsistency is intentional or should be corrected.")
-
-    elif check_normalized == "spellchecker":
-        lines.append(
-            "This finding means that the checker detected text that may contain a spelling or wording issue."
-        )
-        lines.append("")
-        lines.append("**What to inspect next:**")
-        lines.append("1. Review the exact text in the campaign export.")
-        lines.append("2. Check whether it is a real spelling issue, a proper name, or acceptable domain-specific wording.")
-
+        lines.append(guidance)
     else:
-        lines.append(
-            "This finding indicates that the selected checker detected a potential campaign-configuration issue."
-        )
         lines.append("")
         lines.append("**What to inspect next:**")
-        lines.append("1. Inspect the campaign element named in the finding.")
-        lines.append("2. Compare it with neighboring or copied elements.")
-        lines.append("3. Decide whether the configuration is intentional or should be corrected.")
+        lines.append(
+            "Use the finding details above to open the relevant campaign element in GameBus Studio, "
+            "then inspect the fields mentioned by the checker."
+        )
 
     lines.append("")
     lines.append(

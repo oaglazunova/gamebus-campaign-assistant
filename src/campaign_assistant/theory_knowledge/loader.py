@@ -7,6 +7,7 @@ _THEORY_FILES = [
     "bct_summary.md",
     "com_b_summary.md",
     "ttm_summary.md",
+    "sdt_summary.md",
 ]
 
 

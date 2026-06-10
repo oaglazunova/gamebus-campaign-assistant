@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from campaign_assistant.agents.fact_sheet import build_fact_sheet
 from campaign_assistant.agents.intent_router import RoutedIntent
@@ -66,6 +66,60 @@ def test_guard_blocks_issue_claim_for_passed_check(minimal_analysis_result: dict
     assert guard.reason == "unsupported_check_issue_claim:reachability"
     assert guard.replacement_text is not None
     assert "reachability" in guard.replacement_text
+
+
+def test_guard_allows_check_definition_answers_for_passed_checks(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 5
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["spellchecker"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 5}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="What does spellchecker do?",
+        answer="Spellchecker reports empty names, faulty text, and spelling errors in task and challenge names.",
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True
+
+
+def test_guard_allows_prioritization_definition_answers_for_passed_checks(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 5
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["reachability"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 5}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="How is prioritization calculated?",
+        answer="Each check has a severity level: reachability = high, secrets = medium. Scores are high = 300 and medium = 200.",
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True
 
 
 def test_guard_blocks_strong_outcome_claim(minimal_analysis_result: dict) -> None:

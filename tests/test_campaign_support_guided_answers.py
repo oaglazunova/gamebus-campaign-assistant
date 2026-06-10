@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from campaign_assistant.agents.campaign_support_agent import CampaignSupportAgent
 from campaign_assistant.agents.context_builder import build_llm_context
 
@@ -31,7 +33,7 @@ def _result_with_terminal_reachability_issue(base: dict) -> dict:
 
 def test_fix_followup_uses_deterministic_guidance_even_with_llm_configured(
     minimal_analysis_result: dict,
-):
+) -> None:
     result = _result_with_terminal_reachability_issue(minimal_analysis_result)
     context = build_llm_context(result)
 
@@ -57,7 +59,7 @@ def test_fix_followup_uses_deterministic_guidance_even_with_llm_configured(
 
 def test_prepared_finding_question_uses_matching_finding_guidance(
     minimal_analysis_result: dict,
-):
+) -> None:
     result = _result_with_terminal_reachability_issue(minimal_analysis_result)
     context = build_llm_context(result)
 
@@ -91,7 +93,7 @@ def test_prepared_finding_question_uses_matching_finding_guidance(
 
 def test_general_field_question_adds_gamebus_field_facts_to_llm_context(
     minimal_analysis_result: dict,
-):
+) -> None:
     captured = {}
 
     class MockLLMResponse:
@@ -119,3 +121,14 @@ def test_general_field_question_adds_gamebus_field_facts_to_llm_context(
     assert "Relevant GameBus Studio field facts" in prompt_text
     assert "Time window for resetting the reward count" in prompt_text
     assert "min_days_between_fire" in prompt_text
+
+
+def test_check_explanation_supports_short_follow_up(minimal_analysis_result: dict) -> None:
+    agent = CampaignSupportAgent(llm_client=None)
+    context = build_llm_context(minimal_analysis_result)
+
+    answer = agent.run(question="and consistency?", context=context)
+
+    assert "Consistency check" in answer
+    assert "is_initial_level" in answer
+    assert "failure_next" in answer

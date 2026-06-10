@@ -10,6 +10,7 @@ REACHABILITY = "reachability"
 TARGETPOINTSREACHABLE = "targetpointsreachable"
 SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
+TTMSTRUCTURE = "ttm"
 
 # Checks that can be computed from the campaign export itself.
 UNIVERSAL_CHECKS = [
@@ -24,15 +25,38 @@ EXPORT_STRUCTURAL_CHECKS = [
     TARGETPOINTSREACHABLE,
 ]
 
-# Checks shown/used in the normal app flow.
+THEORY_SPECIFIC_CHECKS = [
+    TTMSTRUCTURE,
+]
+
+# Checks that are visible in the normal check picker.
+# This list includes optional checks that are intentionally disabled by default.
+CHECK_PICKER_CHECKS = [
+    SECRETS,
+    SPELLCHECKER,
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
+    TARGETPOINTSREACHABLE,
+    TTMSTRUCTURE,
+]
+
+# Checks used when no explicit selection is provided.
+# Spellchecker is intentionally excluded because it is German-only and can be slow.
+# TTM structure is intentionally excluded because it is HW8 long-term-campaign specific.
 DEFAULT_CHECKS = [
-    *UNIVERSAL_CHECKS,
-    *EXPORT_STRUCTURAL_CHECKS,
+    SECRETS,
+    REACHABILITY,
+    CONSISTENCY,
+    VISUALIZATIONINTERN,
+    TARGETPOINTSREACHABLE,
 ]
 
 # Complete supported runtime check list.
 ALL_CHECKS = [
-    *DEFAULT_CHECKS,
+    *UNIVERSAL_CHECKS,
+    *EXPORT_STRUCTURAL_CHECKS,
+    *THEORY_SPECIFIC_CHECKS,
 ]
 
 # Human-friendly names for UI display.
@@ -43,6 +67,7 @@ FRIENDLY_CHECK_NAMES = {
     TARGETPOINTSREACHABLE: "Target points reachable",
     SECRETS: "Secrets",
     SPELLCHECKER: "Spellchecker",
+    TTMSTRUCTURE: "TTM structure",
 }
 
 # Used for issue prioritization.
@@ -53,6 +78,7 @@ SEVERITY_BY_CHECK = {
     VISUALIZATIONINTERN: "medium",
     SECRETS: "medium",
     SPELLCHECKER: "low",
+    TTMSTRUCTURE: "medium",
 }
 
 

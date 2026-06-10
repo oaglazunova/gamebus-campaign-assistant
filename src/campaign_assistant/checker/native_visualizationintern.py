@@ -56,6 +56,33 @@ def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
     return index
 
 
+def _visualization_index(visualizations_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
+    index: dict[Any, dict[str, Any]] = {}
+    for _, row in visualizations_df.iterrows():
+        record = row.to_dict()
+        index[record["id"]] = record
+    return index
+
+
+def _challenge_ref(challenge: Mapping[str, Any]) -> str:
+    challenge_id = _clean_scalar(challenge.get("id"))
+    challenge_name = _clean_scalar(challenge.get("name")) or "unnamed"
+    return f"{challenge_id} ({challenge_name})"
+
+
+def _visualization_ref(
+    visualization_id: Any,
+    visualizations: Mapping[Any, dict[str, Any]],
+) -> str:
+    clean_id = _clean_scalar(visualization_id)
+    visualization = visualizations.get(visualization_id)
+    if not visualization:
+        return str(clean_id)
+
+    description = _clean_scalar(visualization.get("description")) or "unnamed"
+    return f"{clean_id} ({description})"
+
+
 def _is_initial(challenge: Mapping[str, Any]) -> bool:
     return challenge.get("is_initial_level") == 1
 
@@ -137,15 +164,22 @@ def _issue(
     reachable_challenge: Mapping[str, Any],
     active_wave_ids: set[Any],
     initial_challenge: Mapping[str, Any],
+    visualizations: Mapping[Any, dict[str, Any]],
 ) -> Issue:
     wave_id = _clean_scalar(visualization.get("wave"))
+
     description = (
         "Reachable Challenge from some initial level is not in same visualization or not with same label:\n"
-        f"Initial challenge visualization = '{initial_challenge.get('visualizations')}'; "
-        f"reachable challenge visualization = '{reachable_challenge.get('visualizations')}'\n"
+        f"Initial challenge = {_challenge_ref(initial_challenge)}; "
+        f"reachable challenge = {_challenge_ref(reachable_challenge)}\n"
+        f"Initial challenge visualization = "
+        f"'{_visualization_ref(initial_challenge.get('visualizations'), visualizations)}'; "
+        f"reachable challenge visualization = "
+        f"'{_visualization_ref(reachable_challenge.get('visualizations'), visualizations)}'\n"
         f"Initial challenge labels = '{initial_challenge.get('labels')}'; "
         f"reachable challenge labels = '{reachable_challenge.get('labels')}'\n"
     )
+
     return Issue(
         check=VISUALIZATIONINTERN,
         severity="high",
@@ -169,6 +203,7 @@ def run_native_visualizationintern_tables(
     waves_df = tables.get("waves", pd.DataFrame())
 
     challenges = _challenge_index(challenges_df)
+    visualizations = _visualization_index(visualizations_df)
     active_wave_ids = _active_wave_ids(waves_df, now=now)
 
     issues: list[Issue] = []
@@ -205,6 +240,7 @@ def run_native_visualizationintern_tables(
                         reachable_challenge=reachable,
                         active_wave_ids=active_wave_ids,
                         initial_challenge=initial,
+                        visualizations=visualizations,
                     )
                 )
 

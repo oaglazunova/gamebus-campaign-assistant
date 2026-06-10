@@ -292,11 +292,6 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 		if st.button("Reset conversation", key="assistant-clear-conversation", use_container_width=True):
 			st.session_state.messages = []
 			st.rerun()
-	with control_col2:
-		st.caption(
-			"Ask about checker findings, campaign structure, or what to inspect next. "
-			"Finding-specific questions prepared from the Findings page appear near the chat input."
-		)
 
 	_handle_pending_assistant_prompt(logger, result)
 

@@ -189,7 +189,7 @@ def _severity_badge(severity: str) -> str:
         return "🟠 Medium"
     if severity == "low":
         return "🟡 Low"
-    return "⚪ Unspecified"
+    return "⚪ No severity"
 
 
 def _count_by_severity(issues: list[dict[str, Any]]) -> dict[str, int]:
@@ -270,7 +270,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
     with filter_col1:
         severity_filter = st.selectbox(
             "Severity",
-            options=["All", "High", "Medium", "Low", "Unspecified"],
+            options=["All", "High", "Medium", "Low", "No severity"],
             index=0,
             key="findings-severity-filter",
         )
@@ -299,7 +299,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         selected = severity_filter.lower()
         if selected == "high":
             filtered = [issue for issue in filtered if _severity(issue) in {"critical", "high"}]
-        elif selected == "unspecified":
+        elif selected == "no severity":
             filtered = [issue for issue in filtered if _severity(issue) not in {"critical", "high", "medium", "low"}]
         else:
             filtered = [issue for issue in filtered if _severity(issue) == selected]
@@ -325,13 +325,13 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         grouped[str(issue.get("check") or "unknown")].append(issue)
 
     for check_id, check_issues in grouped.items():
-        with st.expander(f"{_check_label(check_id)} — {len(check_issues)} finding(s)", expanded=True):
+        with st.expander(f"{_check_label(check_id)} - {len(check_issues)} finding(s)", expanded=True):
             for idx, issue in enumerate(check_issues, start=1):
                 title = _issue_title(issue)
                 message = _issue_message(issue)
                 severity = _severity(issue)
 
-                st.markdown(f"#### {idx}. {_severity_badge(severity)} — {title}")
+                st.markdown(f"#### {idx}. {_severity_badge(severity)} - {title}")
 
                 if message:
                     st.write(message)

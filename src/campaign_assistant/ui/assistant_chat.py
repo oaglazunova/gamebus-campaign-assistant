@@ -132,7 +132,7 @@ def _format_top_issues(result: dict[str, Any], limit: int = 5) -> str:
         label = _issue_label(issue)
         location = _issue_location(issue)
         if location:
-            lines.append(f"{idx}. **{label}** — {location}")
+            lines.append(f"{idx}. **{label}** - {location}")
         else:
             lines.append(f"{idx}. **{label}**")
 
@@ -183,14 +183,18 @@ def render_llm_status_panel() -> None:
         st.write(f"**Provider:** `{client.provider}`")
         st.write(f"**Model:** `{client.model}`")
 
+        st.caption(f"Env model value: `{os.getenv('CAMPAIGN_ASSISTANT_LLM_MODEL', '<not set>')}`")
+
+
         if client.provider == "ollama":
             st.caption(
                 "If responses say Ollama is unavailable, make sure Ollama is running "
                 "and that the configured model has been pulled."
             )
+
             st.code(
-                "ollama serve\n"
-                "ollama pull gemma3:1b",
+                f"ollama serve\n"
+                f"ollama pull {client.model}",
                 language="powershell",
             )
 
@@ -209,6 +213,8 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
         "What is the campaign structure?",
         "What should I inspect first?",
         "Explain the highest-priority finding",
+        "How is prioritization calculated?",
+        "How theory-grounded is this campaign?",
     ]
 
     if _total_issues(result) == 0:
@@ -217,6 +223,8 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
             "What is the campaign structure?",
             "Which checks were run?",
             "What does a clean result mean?",
+            "How is prioritization calculated?",
+            "How theory-grounded is this campaign?",
         ]
 
     st.caption("Quick questions")
@@ -227,7 +235,6 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
             if st.button(suggestion, key=f"assistant-suggestion-{idx}", use_container_width=True):
                 st.session_state["assistant_pending_question"] = suggestion
                 st.rerun()
-
 
 
 def render_prepared_question_panel() -> None:
@@ -331,4 +338,4 @@ def render_agent_trace_panel(result: dict[str, Any], show_trace: bool) -> None:
             agent_name = item.get("agent_name", "agent")
             status = item.get("status", "unknown")
             summary = item.get("summary", "")
-            st.markdown(f"- **{agent_name}** — `{status}`: {summary}")
+            st.markdown(f"- **{agent_name}** - `{status}`: {summary}")

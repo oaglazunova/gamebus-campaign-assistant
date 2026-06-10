@@ -48,6 +48,19 @@ COM_B_TERMS = [
     "motivation",
 ]
 
+SDT_TERMS = [
+    "sdt",
+    "self-determination theory",
+    "self determination theory",
+    "autonomy",
+    "competence",
+    "relatedness",
+    "intrinsic motivation",
+    "extrinsic motivation",
+    "internalization",
+    "internalisation",
+]
+
 DESIGN_QUALITY_TERMS = [
     "good campaign",
     "is it good",
@@ -63,6 +76,29 @@ DESIGN_QUALITY_TERMS = [
     "adherence",
     "improve the campaign",
     "improve this campaign",
+]
+
+
+BROAD_THEORY_GROUNDING_TERMS = [
+    "how theory-grounded",
+    "how theory grounded",
+    "theory-grounded",
+    "theory grounded",
+    "theory-aligned",
+    "theory aligned",
+    "theoretical grounding",
+    "theory grounding",
+    "theory support",
+    "follow a behavior theory",
+    "follow a behaviour theory",
+    "follows a behavior theory",
+    "follows a behaviour theory",
+    "does this campaign follow",
+    "does the campaign follow",
+    "behavior-change theory",
+    "behaviour-change theory",
+    "behavior change theory",
+    "behaviour change theory",
 ]
 
 
@@ -91,8 +127,25 @@ def is_com_b_question(question: str) -> bool:
     return contains_any(question, COM_B_TERMS)
 
 
+def is_sdt_question(question: str) -> bool:
+    return contains_any(question, SDT_TERMS)
+
+
 def is_design_quality_question(question: str) -> bool:
     return contains_any(question, DESIGN_QUALITY_TERMS)
+
+
+def mentions_specific_theory(question: str) -> bool:
+    return (
+        is_bct_question(question)
+        or is_ttm_question(question)
+        or is_com_b_question(question)
+        or is_sdt_question(question)
+    )
+
+
+def is_broad_theory_grounding_question(question: str) -> bool:
+    return contains_any(question, BROAD_THEORY_GROUNDING_TERMS)
 
 
 def is_theory_or_design_question(question: str) -> bool:
@@ -101,6 +154,7 @@ def is_theory_or_design_question(question: str) -> bool:
         or is_bct_question(question)
         or is_ttm_question(question)
         or is_com_b_question(question)
+        or is_sdt_question(question)
         or is_design_quality_question(question)
         or contains_any(question, ["theory", "theoretical", "intervention"])
     )

@@ -403,6 +403,12 @@ def gamebus_studio_facts_markdown_for_check(check_id: str | None) -> str:
     if not facts:
         return ""
 
+    lines = ["GameBus Studio source facts:"]
+    for fact in facts:
+        lines.append(f"- **{fact.topic}**: {fact.text}")
+
+    return "\n".join(lines)
+
 
 def gamebus_studio_facts_markdown_for_issue(issue: dict) -> str:
     return gamebus_studio_facts_markdown_for_check(issue.get("check"))

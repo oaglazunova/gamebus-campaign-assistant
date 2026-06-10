@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from campaign_assistant.agents.campaign_support_agent import CampaignSupportAgent
 from campaign_assistant.agents.context_builder import build_llm_context
 
@@ -29,9 +31,9 @@ def _result_with_terminal_reachability_issue(base: dict) -> dict:
     return result
 
 
-def test_campaign_support_fallback_includes_deterministic_guidance(
+def test_highest_priority_question_uses_deterministic_answer_without_llm(
     minimal_analysis_result: dict,
-):
+) -> None:
     result = _result_with_terminal_reachability_issue(minimal_analysis_result)
     context = build_llm_context(result)
 
@@ -41,8 +43,8 @@ def test_campaign_support_fallback_includes_deterministic_guidance(
         context=context,
     )
 
-    assert "LLM support is not available" in answer
-    assert "Deterministic guidance for the highest-priority finding" in answer
+    assert "Highest-priority finding" in answer
+    assert "LLM support is not available" not in answer
     assert "Connect this terminal level to an initial success path" in answer
     assert "Next level when target is met on time" in answer
     assert "GameBus Studio URL" in answer
@@ -50,7 +52,7 @@ def test_campaign_support_fallback_includes_deterministic_guidance(
 
 def test_campaign_support_fallback_includes_gamebus_source_facts(
     minimal_analysis_result: dict,
-):
+) -> None:
     result = _result_with_terminal_reachability_issue(minimal_analysis_result)
     context = build_llm_context(result)
 
@@ -60,6 +62,6 @@ def test_campaign_support_fallback_includes_gamebus_source_facts(
         context=context,
     )
 
-    assert "Relevant GameBus Studio source facts" in answer
+    assert "Relevant GameBus Studio facts" in answer or "Relevant GameBus Studio source facts" in answer
     assert "Level settings" in answer
     assert "success_next" in answer

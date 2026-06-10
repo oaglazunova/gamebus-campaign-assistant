@@ -72,6 +72,37 @@ def _matches_any(text: str, patterns: list[str]) -> bool:
     return any(re.search(pattern, normalized) for pattern in patterns)
 
 
+def _is_check_definition_question(question: str) -> bool:
+    normalized = _lower(question)
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in [
+            r"\bwhat does\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bwhat is\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bexplain\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bhow does\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bhow is\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+        ]
+    )
+
+
+def _is_prioritization_definition_question(question: str) -> bool:
+    normalized = _lower(question)
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in [
+            r"\bhow\b.*\bprioriti[sz]ation\b.*\bcalculat",
+            r"\bhow\b.*\bpriority\b.*\bcalculat",
+            r"\bhow\b.*\bprioriti[sz]ed\b",
+            r"\bpriority score\b",
+            r"\bprioriti[sz]ation\b",
+        ]
+    )
+
+
+
 def _clean_checker_result_replacement(question: str, facts: dict[str, Any]) -> str:
     checker = facts.get("checker_facts", {}) or {}
     export = facts.get("export_facts", {}) or {}
@@ -308,16 +339,22 @@ def validate_agent_response(
             replacement_text=_clean_checker_result_replacement(question, facts),
         )
 
-
     # Guard 1b: do not claim issues for checks that did not fail.
-    unsupported_check = _claims_issue_for_non_failed_check(answer, facts)
-    if unsupported_check:
-        return GuardResult(
-            safe=False,
-            reason=f"unsupported_check_issue_claim:{unsupported_check}",
-            replacement_text=_checker_specific_replacement(question, facts, unsupported_check),
-
-        )
+    # Do not apply this guard to check-definition questions such as
+    # "what does spellchecker do?", because those answers describe the check in
+    # general and may mention errors, warnings, challenges, or reported fields
+    # without claiming that the current campaign has such findings.
+    if not (
+            _is_check_definition_question(question)
+            or _is_prioritization_definition_question(question)
+    ):
+        unsupported_check = _claims_issue_for_non_failed_check(answer, facts)
+        if unsupported_check:
+            return GuardResult(
+                safe=False,
+                reason=f"unsupported_check_issue_claim:{unsupported_check}",
+                replacement_text=_checker_specific_replacement(question, facts, unsupported_check),
+            )
 
     # Guard 2: no definitive causal outcome/effectiveness claims.
     if is_outcome_question(question) and _matches_any(answer, _STRONG_OUTCOME_CLAIM_PATTERNS):

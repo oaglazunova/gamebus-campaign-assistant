@@ -9,6 +9,7 @@ import streamlit.components.v1 as components
 
 from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
 from campaign_assistant.diagram import build_campaign_flow_svg
+from campaign_assistant.checker.check_metadata import PRIORITY_HINT
 
 
 def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
@@ -286,7 +287,7 @@ def _render_current_campaign_compact(result: dict[str, Any]) -> None:
     structure_cols[3].metric("Tasks", counts.get("tasks", 0))
     structure_cols[4].metric("Transitions", counts.get("transitions", 0))
 
-    st.markdown("### Analysis summary")
+    st.markdown("### Analysis summary", help=PRIORITY_HINT)
 
     issue_cols = st.columns(5)
     issue_cols[0].metric("Checks", len(checks_run))
@@ -333,15 +334,11 @@ def _render_next_steps_card(result: dict[str, Any]) -> None:
 
     if total > 0:
         st.markdown(
-            "- Open **Findings** to inspect issues.\n"
-            "- Start with **High** priority findings.\n"
-            "- Use **Assistant** to ask what an issue means."
+            "🔎 Open **Findings** to inspect issues. - ⚠️ Start with **High** priority findings. - 💬 Use **Assistant** to ask what an issue means and how to fix it."
         )
     else:
         st.markdown(
-            "- Open **Findings** to confirm which checks were run.\n"
-            "- Use **Assistant** for a short interpretation.\n"
-            "- Remember: clean checks are not full theory validation."
+            "✅ Open **Findings** to confirm which checks were run. - 💬 Use **Assistant** for a short interpretation if needed. - 🧭 Remember: clean checks are not proofs of deployment readiness."
         )
 
 
@@ -350,29 +347,15 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
     if show_title:
         st.subheader("Overview")
 
-    total, _, _, _ = _summary_counts(result)
-
     _render_current_campaign_compact(result)
     _render_flow_diagram_panel(result)
 
-    if total > 0:
-        st.warning(
-            "Issues found. Review high-priority findings first, then inspect the detailed findings."
-        )
-    else:
-        st.success(
-            "No issues were found by the selected checks. This does not prove that "
-            "the campaign is theoretically optimal or deployment-ready; it only means "
-            "that the selected export-level checks did not detect problems."
-        )
+    _render_next_steps_card(result)
 
-    col1, col2, col3 = st.columns([1, 1.5, 1.2])
+    col1, col2 = st.columns([1, 1.5])
 
     with col1:
         _render_failed_checks_card(result)
 
     with col2:
         _render_top_priorities_card(result)
-
-    with col3:
-        _render_next_steps_card(result)
