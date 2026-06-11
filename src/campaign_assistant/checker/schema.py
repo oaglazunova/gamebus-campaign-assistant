@@ -95,6 +95,14 @@ class Issue:
     message: str
     url: str
 
+    @property
+    def priority_score(self) -> int:
+        severity_score = {"high": 300, "medium": 200, "low": 100}.get(
+            str(self.severity).lower(),
+            0,
+        )
+        return severity_score + (50 if self.active_wave else 0)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "check": self.check,
@@ -107,4 +115,5 @@ class Issue:
             "wave_id": self.wave_id,
             "message": self.message,
             "url": self.url,
+            "priority_score": self.priority_score,
         }

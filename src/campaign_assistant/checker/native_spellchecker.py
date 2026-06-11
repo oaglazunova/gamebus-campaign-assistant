@@ -4,12 +4,25 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import language_tool_python
 import pandas as pd
-from language_tool_python.utils import TextStatus, classify_matches
+
+try:
+    import language_tool_python
+    from language_tool_python.utils import TextStatus, classify_matches
+except ImportError:  # optional dependency for the disabled-by-default spellchecker
+    language_tool_python = None
+    TextStatus = None
+    classify_matches = None
 
 from campaign_assistant.checker.schema import Issue, SPELLCHECKER
-
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _challenge_index,
+    _challenge_url,
+    _clean_scalar,
+    _get_table,
+    _visualization_index,
+)
 
 KNOWN_WORDS = [
     "Newbie",
@@ -46,6 +59,9 @@ def load_spellchecker_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
 
 
 def build_spellchecker_tool():
+    if language_tool_python is None:
+        raise RuntimeError("language_tool_python is not installed")
+
     errors: list[str] = []
 
     try:
@@ -76,60 +92,6 @@ def _spellchecker_unavailable_result(reason: str) -> dict[str, Any]:
         "issues": [],
         "notes": [f"Spellchecker skipped: {reason}"],
     }
-
-
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(waves_df: pd.DataFrame, now: pd.Timestamp | None = None) -> set[Any]:
-    if waves_df is None or waves_df.empty:
-        return set()
-
-    now = now if now is not None else _get_now_timestamp()
-    active: set[Any] = set()
-
-    for _, row in waves_df.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row.get("id"))
-
-    return active
-
-
-def _clean_scalar(value: Any) -> Any:
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
-
-
-def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in challenges_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _visualization_index(visualizations_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in visualizations_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _challenge_url(visualization: Mapping[str, Any], challenge: Mapping[str, Any]) -> str:
-    return (
-        f"https://campaigns.healthyw8.gamebus.eu/editor/for/"
-        f"{visualization.get('campaign')}/{challenge.get('visualizations')}/challenges/{challenge.get('id')}"
-    )
 
 
 def _issue(
@@ -165,6 +127,9 @@ def check_text(tool, text: Any, text_type: str) -> tuple[bool, str | None]:
     if not text:
         return True, f"{text_type} is empty."
 
+    if classify_matches is None or TextStatus is None:
+        raise RuntimeError("language_tool_python is not installed")
+
     matches = tool.check(text)
     status = classify_matches(matches)
     errormessage = None
@@ -184,9 +149,9 @@ def run_native_spellchecker_tables(
     tool=None,
 ) -> dict[str, Any]:
     try:
-        tasks_df = tables["tasks"]
-        challenges_df = tables["challenges"]
-        visualizations_df = tables["visualizations"]
+        tasks_df = _get_table(tables, "tasks")
+        challenges_df = _get_table(tables, "challenges")
+        visualizations_df = _get_table(tables, "visualizations")
         waves_df = tables.get("waves", pd.DataFrame())
 
         tool = tool if tool is not None else build_spellchecker_tool()

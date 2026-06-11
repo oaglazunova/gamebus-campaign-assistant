@@ -7,6 +7,16 @@ from typing import Any
 import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, VISUALIZATIONINTERN
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _challenge_index,
+    _challenge_url,
+    _clean_scalar,
+    _get_table,
+    _is_initial,
+    _is_terminal,
+    _visualization_index,
+)
 
 
 def load_visualizationintern_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
@@ -15,53 +25,6 @@ def load_visualizationintern_tables(file_path: str | Path) -> dict[str, pd.DataF
         "challenges": pd.read_excel(file_path, sheet_name="challenges"),
         "waves": pd.read_excel(file_path, sheet_name="waves"),
     }
-
-
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(waves_df: pd.DataFrame, now: pd.Timestamp | None = None) -> set[Any]:
-    if waves_df is None or waves_df.empty:
-        return set()
-
-    now = now if now is not None else _get_now_timestamp()
-    active: set[Any] = set()
-
-    for _, row in waves_df.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row.get("id"))
-
-    return active
-
-
-def _clean_scalar(value: Any) -> Any:
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
-
-
-def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in challenges_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _visualization_index(visualizations_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in visualizations_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
 
 
 def _challenge_ref(challenge: Mapping[str, Any]) -> str:
@@ -83,9 +46,6 @@ def _visualization_ref(
     return f"{clean_id} ({description})"
 
 
-def _is_initial(challenge: Mapping[str, Any]) -> bool:
-    return challenge.get("is_initial_level") == 1
-
 
 def _get_success(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str, Any]]) -> dict[str, Any] | None:
     return challenges.get(challenge.get("success_next"))
@@ -95,16 +55,17 @@ def _get_failure(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str
     return challenges.get(challenge.get("failure_next"))
 
 
-def _is_terminal(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str, Any]]) -> bool:
-    next_challenge = _get_success(challenge, challenges)
-    if next_challenge is None:
+
+def _is_missing_label(value: Any) -> bool:
+    try:
+        return bool(pd.isna(value))
+    except Exception:
         return False
-    return next_challenge.get("id") == challenge.get("id")
 
 
 def _labels_equal(left: Any, right: Any) -> bool:
-    left_missing = pd.isna(left)
-    right_missing = pd.isna(right)
+    left_missing = _is_missing_label(left)
+    right_missing = _is_missing_label(right)
     if left_missing and right_missing:
         return True
     if left_missing or right_missing:
@@ -151,13 +112,6 @@ def _reachable_terminal_challenges(
     return result
 
 
-def _challenge_url(visualization: Mapping[str, Any], challenge: Mapping[str, Any]) -> str:
-    return (
-        f"https://campaigns.healthyw8.gamebus.eu/editor/for/"
-        f"{visualization.get('campaign')}/{challenge.get('visualizations')}/challenges/{challenge.get('id')}"
-    )
-
-
 def _issue(
     *,
     visualization: Mapping[str, Any],
@@ -182,7 +136,7 @@ def _issue(
 
     return Issue(
         check=VISUALIZATIONINTERN,
-        severity="high",
+        severity="medium",
         active_wave=wave_id in active_wave_ids if wave_id is not None else False,
         visualization_id=_clean_scalar(visualization.get("id")),
         visualization=str(_clean_scalar(visualization.get("description")) or ""),
@@ -198,8 +152,8 @@ def run_native_visualizationintern_tables(
     tables: Mapping[str, pd.DataFrame],
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
-    visualizations_df = tables["visualizations"]
-    challenges_df = tables["challenges"]
+    visualizations_df = _get_table(tables, "visualizations")
+    challenges_df = _get_table(tables, "challenges")
     waves_df = tables.get("waves", pd.DataFrame())
 
     challenges = _challenge_index(challenges_df)

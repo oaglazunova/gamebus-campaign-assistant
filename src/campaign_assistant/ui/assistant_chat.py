@@ -324,18 +324,3 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
             f"Error: `{exc}`"
         )
 
-
-def render_agent_trace_panel(result: dict[str, Any], show_trace: bool) -> None:
-    if not show_trace:
-        return
-
-    trace = _assistant_meta(result).get("agent_trace", []) or []
-    if not trace:
-        return
-
-    with st.expander("Analysis trace", expanded=False):
-        for item in trace:
-            agent_name = item.get("agent_name", "agent")
-            status = item.get("status", "unknown")
-            summary = item.get("summary", "")
-            st.markdown(f"- **{agent_name}** - `{status}`: {summary}")

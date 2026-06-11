@@ -19,7 +19,7 @@ GameBus Campaign Assistant needs Python to run.
 ### What to do
 
 1. Go to the Python website: https://www.python.org/downloads/
-2. Download **Python 3.14** or newer
+2. Download **Python 3.11 or newer**
 3. Run the installer
 
 ### Important

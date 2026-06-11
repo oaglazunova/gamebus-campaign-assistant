@@ -31,7 +31,7 @@ def run_analysis(
     workspace_id: str | None = None,
 ) -> None:
     """
-    Run campaign analysis through the new multi-agent coordinator and store
+    Run campaign analysis through deterministic checker coordinator + assistant question router and store
     the result in Streamlit session state.
 
     This preserves current UI behavior while introducing runtime agent orchestration.

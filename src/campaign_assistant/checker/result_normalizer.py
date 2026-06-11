@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
@@ -43,19 +43,20 @@ def _issue_severity(issue: dict[str, Any]) -> str:
     return "unknown"
 
 
-def _severity_rank(issue: dict[str, Any]) -> int:
-    severity = _issue_severity(issue)
-    if severity == "high":
-        return 0
-    if severity == "medium":
-        return 1
-    if severity == "low":
-        return 2
-    return 3
+def _priority_score(issue: dict[str, Any]) -> int:
+    raw_score = issue.get("priority_score")
+    try:
+        return int(raw_score)
+    except (TypeError, ValueError):
+        pass
 
+    severity_score = {
+        "high": 300,
+        "medium": 200,
+        "low": 100,
+    }.get(_issue_severity(issue), 0)
 
-def _active_wave_rank(issue: dict[str, Any]) -> int:
-    return 0 if bool(issue.get("active_wave")) else 1
+    return severity_score + (50 if bool(issue.get("active_wave")) else 0)
 
 
 def _issue_title(issue: dict[str, Any]) -> str:
@@ -117,11 +118,13 @@ def _flatten_issues(issues_by_check: dict[str, list[dict[str, Any]]]) -> list[di
 
 
 def _prioritize_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for issue in issues:
+        issue.setdefault("priority_score", _priority_score(issue))
+
     return sorted(
         issues,
         key=lambda issue: (
-            _severity_rank(issue),
-            _active_wave_rank(issue),
+            -_priority_score(issue),
             str(issue.get("check") or ""),
             str(issue.get("visualization") or ""),
             str(issue.get("challenge") or ""),

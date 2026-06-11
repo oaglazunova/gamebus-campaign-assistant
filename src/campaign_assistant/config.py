@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 APP_NAME = "GameBus Campaign Assistant"
 APP_ID = "gamebus_campaign_assistant"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.1"
 
 # Paths
 PACKAGE_DIR = Path(__file__).resolve().parent

@@ -7,6 +7,15 @@ from typing import Any
 import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, TTMSTRUCTURE
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _challenge_index,
+    _challenge_url,
+    _clean_scalar,
+    _get_table,
+    _is_initial,
+    _is_terminal,
+)
 
 
 DEFAULT_NO_RELAPSE_LEVELS = 4
@@ -18,49 +27,6 @@ def load_ttm_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
         "challenges": pd.read_excel(file_path, sheet_name="challenges"),
         "waves": pd.read_excel(file_path, sheet_name="waves"),
     }
-
-
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(waves_df: pd.DataFrame, now: pd.Timestamp | None = None) -> set[Any]:
-    if waves_df is None or waves_df.empty:
-        return set()
-
-    now = now if now is not None else _get_now_timestamp()
-    active: set[Any] = set()
-
-    for _, row in waves_df.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row.get("id"))
-
-    return active
-
-
-def _clean_scalar(value: Any) -> Any:
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
-
-
-def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in challenges_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _is_initial(challenge: Mapping[str, Any]) -> bool:
-    return challenge.get("is_initial_level") == 1
 
 
 def _challenge_ref(challenge: Mapping[str, Any] | None) -> str:
@@ -93,20 +59,6 @@ def _get_failure(
     if challenge is None:
         return None
     return challenges.get(challenge.get("failure_next"))
-
-
-def _is_terminal(
-    challenge: Mapping[str, Any],
-    challenges: Mapping[Any, dict[str, Any]],
-) -> bool:
-    return _same_challenge(_get_success(challenge, challenges), challenge)
-
-
-def _challenge_url(visualization: Mapping[str, Any], challenge: Mapping[str, Any]) -> str:
-    return (
-        f"https://campaigns.healthyw8.gamebus.eu/editor/for/"
-        f"{visualization.get('campaign')}/{challenge.get('visualizations')}/challenges/{challenge.get('id')}"
-    )
 
 
 def _issue(
@@ -349,8 +301,8 @@ def run_native_ttm_tables(
     if no_relapse_levels <= 0:
         raise ValueError("no_relapse_levels must be greater than 0")
 
-    visualizations_df = tables["visualizations"]
-    challenges_df = tables["challenges"]
+    visualizations_df = _get_table(tables, "visualizations")
+    challenges_df = _get_table(tables, "challenges")
     waves_df = tables.get("waves", pd.DataFrame())
 
     challenges = _challenge_index(challenges_df)

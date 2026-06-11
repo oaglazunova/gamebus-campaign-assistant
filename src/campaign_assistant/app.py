@@ -8,7 +8,6 @@ from campaign_assistant.storage import add_saved_campaign_abbreviation, get_cook
 from campaign_assistant.ui.actions import run_analysis, save_uploaded_file
 from campaign_assistant.ui.assistant_chat import (
     answer_question,
-    render_agent_trace_panel,
     render_assistant_guide_panel,
     render_assistant_page_status,
     render_llm_status_panel,
@@ -57,6 +56,16 @@ def _render_source_info() -> None:
 			f"**{source_info['campaign_abbreviation']}**{tag}"
 		)
 
+
+def _update_source_info() -> None:
+	if isinstance(st.session_state.get("result"), dict):
+		st.session_state.result.setdefault("assistant_meta", {}).update(
+			{
+				"source_mode": st.session_state.last_source_info.get("mode"),
+				"source_label": st.session_state.last_source_info.get("file_name")
+				                or st.session_state.last_source_info.get("campaign_abbreviation"),
+			}
+		)
 
 def _handle_run(sidebar: dict, logger) -> None:
 	if not sidebar["run_clicked"]:
@@ -109,14 +118,7 @@ def _handle_run(sidebar: dict, logger) -> None:
 					logger=logger,
 				)
 
-				if isinstance(st.session_state.get("result"), dict):
-					st.session_state.result.setdefault("assistant_meta", {}).update(
-						{
-							"source_mode": st.session_state.last_source_info.get("mode"),
-							"source_label": st.session_state.last_source_info.get("file_name")
-							                or st.session_state.last_source_info.get("campaign_abbreviation"),
-						}
-					)
+				_update_source_info()
 
 			else:
 				base_url = st.session_state.app_config.get("campaigns_base_url", "").strip()
@@ -171,14 +173,7 @@ def _handle_run(sidebar: dict, logger) -> None:
 					logger=logger,
 				)
 
-				if isinstance(st.session_state.get("result"), dict):
-					st.session_state.result.setdefault("assistant_meta", {}).update(
-						{
-							"source_mode": st.session_state.last_source_info.get("mode"),
-							"source_label": st.session_state.last_source_info.get("file_name")
-							                or st.session_state.last_source_info.get("campaign_abbreviation"),
-						}
-					)
+				_update_source_info()
 
 				st.session_state.settings = add_saved_campaign_abbreviation(
 					campaign_abbreviation, st.session_state.settings
@@ -273,8 +268,7 @@ def _handle_pending_assistant_prompt(logger, result) -> None:
 
 	st.rerun()
 
-
-def _render_assistant_page(logger, show_trace: bool) -> None:
+def _render_assistant_page(logger) -> None:
 	_render_page_intro("Assistant", WORKFLOW_PAGE_COPY["Assistant"]["description"])
 
 	result = st.session_state.result
@@ -318,8 +312,6 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 		st.session_state.messages.append({"role": "assistant", "content": answer})
 		st.rerun()
 
-	render_agent_trace_panel(result, show_trace=show_trace)
-
 
 def main() -> None:
 	init_state()
@@ -351,14 +343,12 @@ def main() -> None:
 		key="main_workflow_page",
 	)
 
-	show_trace = bool(st.session_state.get("show_agent_trace", False))
-
 	if selected_page == "Overview":
 		_render_overview_page(result)
 	elif selected_page == "Findings":
 		_render_findings_page(result)
 	else:
-		_render_assistant_page(logger, show_trace=show_trace)
+		_render_assistant_page(logger)
 
 
 if __name__ == "__main__":

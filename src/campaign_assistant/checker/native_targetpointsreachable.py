@@ -8,6 +8,14 @@ from typing import Any
 import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, TARGETPOINTSREACHABLE
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _challenge_index,
+    _challenge_url,
+    _clean_scalar,
+    _get_table,
+    _visualization_index,
+)
 
 
 def load_targetpoints_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
@@ -17,37 +25,6 @@ def load_targetpoints_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
         "visualizations": pd.read_excel(file_path, sheet_name="visualizations"),
         "waves": pd.read_excel(file_path, sheet_name="waves"),
     }
-
-
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(waves_df: pd.DataFrame, now: pd.Timestamp | None = None) -> set[Any]:
-    if waves_df is None or waves_df.empty:
-        return set()
-
-    now = now if now is not None else _get_now_timestamp()
-    active: set[Any] = set()
-
-    for _, row in waves_df.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row.get("id"))
-
-    return active
-
-
-def _clean_scalar(value: Any) -> Any:
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
 
 
 def _as_float(value: Any) -> float | None:
@@ -66,22 +43,6 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in challenges_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _visualization_index(visualizations_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in visualizations_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
 def _tasks_by_challenge(tasks_df: pd.DataFrame) -> dict[Any, list[dict[str, Any]]]:
     result: dict[Any, list[dict[str, Any]]] = {}
     for _, row in tasks_df.iterrows():
@@ -89,13 +50,6 @@ def _tasks_by_challenge(tasks_df: pd.DataFrame) -> dict[Any, list[dict[str, Any]
         challenge_id = record.get("challenge")
         result.setdefault(challenge_id, []).append(record)
     return result
-
-
-def _challenge_url(visualization: Mapping[str, Any], challenge: Mapping[str, Any]) -> str:
-    return (
-        f"https://campaigns.healthyw8.gamebus.eu/editor/for/"
-        f"{visualization.get('campaign')}/{challenge.get('visualizations')}/challenges/{challenge.get('id')}"
-    )
 
 
 def _issue(
@@ -169,9 +123,9 @@ def run_native_targetpointsreachable_tables(
     tables: Mapping[str, pd.DataFrame],
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
-    tasks_df = tables["tasks"]
-    challenges_df = tables["challenges"]
-    visualizations_df = tables["visualizations"]
+    tasks_df = _get_table(tables, "tasks")
+    challenges_df = _get_table(tables, "challenges")
+    visualizations_df = _get_table(tables, "visualizations")
     waves_df = tables.get("waves", pd.DataFrame())
 
     challenges = _challenge_index(challenges_df)

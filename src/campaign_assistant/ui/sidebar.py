@@ -168,5 +168,5 @@ def render_sidebar() -> Dict[str, Any]:
         "uploaded_file": uploaded_file,
         "selected_checks": selected_checks,
         "export_excel": True,
-        "show_agent_trace": False,
+        "show_agent_trace": True,
     }

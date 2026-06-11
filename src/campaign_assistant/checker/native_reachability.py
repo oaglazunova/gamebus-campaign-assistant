@@ -7,11 +7,18 @@ from typing import Any
 import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, REACHABILITY
-
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _challenge_index,
+    _challenge_url,
+    _clean_scalar,
+    _get_table,
+    _is_initial,
+    _is_terminal,
+)
 
 REACHABILITY_INITIAL_ERROR = "Initial Challenge without terminal challenge"
 REACHABILITY_TERMINAL_ERROR = "Terminal Challenge not reachable from any initial challenge"
-
 
 WorkbookTables = Mapping[str, pd.DataFrame]
 
@@ -24,61 +31,11 @@ def load_reachability_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
     }
 
 
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(waves_df: pd.DataFrame, now: pd.Timestamp | None = None) -> set[Any]:
-    if waves_df is None or waves_df.empty:
-        return set()
-
-    now = now if now is not None else _get_now_timestamp()
-    active: set[Any] = set()
-    for _, row in waves_df.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row.get("id"))
-    return active
-
-
-def _clean_scalar(value: Any) -> Any:
-    try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
-
-
-def _challenge_index(challenges_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in challenges_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _visualization_index(visualizations_df: pd.DataFrame) -> dict[Any, dict[str, Any]]:
-    index: dict[Any, dict[str, Any]] = {}
-    for _, row in visualizations_df.iterrows():
-        record = row.to_dict()
-        index[record["id"]] = record
-    return index
-
-
-def _is_initial(challenge: Mapping[str, Any]) -> bool:
-    return challenge.get("is_initial_level") == 1
-
-
-def _success_next(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str, Any]]) -> dict[str, Any] | None:
+def _success_next(
+    challenge: Mapping[str, Any],
+    challenges: Mapping[Any, dict[str, Any]],
+) -> dict[str, Any] | None:
     return challenges.get(challenge.get("success_next"))
-
-
-def _is_terminal(challenge: Mapping[str, Any]) -> bool:
-    return challenge.get("success_next") == challenge.get("id")
 
 
 def _reachable(
@@ -107,13 +64,6 @@ def _reachable(
     return _reachable(next_challenge, to_challenge, challenges, visited_ids)
 
 
-def _challenge_url(visualization: Mapping[str, Any], challenge: Mapping[str, Any]) -> str:
-    return (
-        f"https://campaigns.healthyw8.gamebus.eu/editor/for/"
-        f"{visualization.get('campaign')}/{challenge.get('visualizations')}/challenges/{challenge.get('id')}"
-    )
-
-
 def _issue_from_native(
     *,
     visualization: Mapping[str, Any],
@@ -140,23 +90,26 @@ def run_native_reachability_tables(
     tables: WorkbookTables,
     now: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
-    visualizations_df = tables["visualizations"]
-    challenges_df = tables["challenges"]
+    visualizations_df = _get_table(tables, "visualizations")
+    challenges_df = _get_table(tables, "challenges")
     waves_df = tables.get("waves", pd.DataFrame())
 
-    _visualizations = _visualization_index(visualizations_df)
     challenges = _challenge_index(challenges_df)
     active_wave_ids = _active_wave_ids(waves_df, now=now)
 
     issues: list[Issue] = []
 
     for _, vis_row in visualizations_df.iterrows():
-        vis = vis_row.to_dict()
-        vis_id = vis["id"]
-        vis_challenges = [c for c in challenges.values() if c.get("visualizations") == vis_id]
+        visualization = vis_row.to_dict()
+        visualization_id = visualization["id"]
+        visualization_challenges = [
+            challenge
+            for challenge in challenges.values()
+            if challenge.get("visualizations") == visualization_id
+        ]
 
-        initials = [c for c in vis_challenges if _is_initial(c)]
-        terminals = [c for c in vis_challenges if _is_terminal(c)]
+        initials = [challenge for challenge in visualization_challenges if _is_initial(challenge)]
+        terminals = [challenge for challenge in visualization_challenges if _is_terminal(challenge)]
 
         for initial in initials:
             reaches_any_terminal = any(
@@ -166,7 +119,7 @@ def run_native_reachability_tables(
             if not reaches_any_terminal:
                 issues.append(
                     _issue_from_native(
-                        visualization=vis,
+                        visualization=visualization,
                         challenge=initial,
                         active_wave_ids=active_wave_ids,
                         message=REACHABILITY_INITIAL_ERROR,
@@ -181,7 +134,7 @@ def run_native_reachability_tables(
             if not reached_from_any_initial:
                 issues.append(
                     _issue_from_native(
-                        visualization=vis,
+                        visualization=visualization,
                         challenge=terminal,
                         active_wave_ids=active_wave_ids,
                         message=REACHABILITY_TERMINAL_ERROR,

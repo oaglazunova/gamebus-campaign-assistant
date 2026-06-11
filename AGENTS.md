@@ -1,8 +1,7 @@
 # AI Agent Guidelines for GameBus Campaign Assistant
 
-This repository contains a **Streamlit-based campaign inspection tool** for GameBus campaign exports. The current paper-release branch is intentionally narrower than the earlier MVP: it focuses on deterministic export-based checks, a simplified review UI, one assistant chat, optional local LLM support, guardrailed explanations, and a downloadable campaign-flow diagram.
-
-These guidelines describe the current architecture. Do not reintroduce removed metadata, sidecar, workspace-readiness, patch-generation, or capability-gating workflows unless they are explicitly re-scoped in a future release.
+This repository contains a **Streamlit-based campaign inspection tool** for GameBus campaign exports. 
+These guidelines describe the current architecture. 
 
 ## Big Picture Architecture
 
@@ -17,7 +16,6 @@ The codebase is organized around four responsibilities:
    - Does not implement checker logic or LLM policy logic directly.
 
 2. **Checker and Result Normalization** (`src/campaign_assistant/checker/`)
-   - Wraps the legacy GameBus campaign checker.
    - Runs selected deterministic export-based checks.
    - Normalizes raw checker output into a stable result dictionary.
    - Builds a `campaign_snapshot` used by the Overview, Assistant context, and flow diagram.
@@ -134,8 +132,7 @@ The app must work when LLM support is unavailable. Ollama may improve answer qua
 | Path | Purpose |
 |------|---------|
 | `src/campaign_assistant/app.py` | Main Streamlit entry point and page routing |
-| `src/campaign_assistant/checker/wrapper.py` | Wrapper around the legacy GameBus checker |
-| `src/campaign_assistant/checker/result_normalizer.py` | Normalizes checker output and builds paper-release result structures |
+| `src/campaign_assistant/checker/result_normalizer.py` | Normalizes checker output|
 | `src/campaign_assistant/checker/campaign_snapshot.py` | Extracts campaign structure for Overview, Assistant, and diagram generation |
 | `src/campaign_assistant/checker/schema.py` | Current check identifiers and default check set |
 | `src/campaign_assistant/orchestration/coordinator.py` | Runs the current analysis pipeline |
@@ -153,7 +150,7 @@ The app must work when LLM support is unavailable. Ollama may improve answer qua
 | `src/campaign_assistant/agents/question_types.py` | Classifies outcome, BCT, TTM, COM-B, and design-quality questions |
 | `src/campaign_assistant/llm/` | Ollama, mock, and LLM client factory code |
 | `src/campaign_assistant/diagram/flow_diagram.py` | Dependency-free SVG campaign-flow diagram generator |
-| `tests/` | Current paper-release test suite |
+| `tests/` | Current test suite |
 
 ## Current Deterministic Checks
 
@@ -161,35 +158,22 @@ The current default checks are:
 
 ```python
 SECRETS
-SPELLCHECKER
 REACHABILITY
 CONSISTENCY
 VISUALIZATIONINTERN
 TARGETPOINTSREACHABLE
 ```
 
+The check picker also exposes optional checks that are intentionally disabled by default:
+
+```python
+SPELLCHECKER  # German-only and can be slow on some machines
+TTMSTRUCTURE  # HW8-specific progression review, not formal TTM validation
+```
+
 Use constants from `campaign_assistant.checker.schema` rather than hard-coded strings where possible.
 
-Do not reintroduce old removed checks such as unreliable native/TTM structure checks unless they are redesigned and explicitly re-scoped.
-
-## Removed / Out-of-Scope Workflows
-
-The following were part of earlier prototypes or planning but are intentionally out of scope for the current paper-release branch:
-
-- metadata sidecars;
-- task-role metadata;
-- workspace readiness;
-- workspace bundles;
-- capability-gated validators;
-- old privacy/workspace diagnostics UI;
-- patch generation;
-- patched Excel drafts;
-- metadata-dependent fix proposal generation;
-- old multi-agent analysis pipeline with `PrivacyGuardian`, `CapabilityResolver`, `StructuralChangeAgent`, `TheoryGroundingAgent`, and `ContentFixerAgent`;
-- old setup/workspace pages;
-- formal theory-validation checks based on unreliable assumptions.
-
-Do not add compatibility shims for these removed modules just to satisfy obsolete tests. The test suite should match the current paper-release scope.
+Do not present optional TTM structure checks as formal TTM validation. Keep them explicitly scoped as HW8-specific progression review unless they are redesigned and validated for broader use.
 
 ## Running the App on Windows
 
@@ -246,29 +230,10 @@ $env:CAMPAIGN_ASSISTANT_MOCK_LLM_RESPONSE="Mock response."
 pytest
 ```
 
-The current tests are intentionally aligned with the paper-release scope. They cover imports, assistant routing, response guards, diagram generation, and key integration behavior.
+The current tests cover imports, assistant routing, response guards, diagram generation, and key integration behavior.
 
 Old tests from the previous MVP architecture should not be active in this branch.
 
-## Legacy Checker Integration
-
-The legacy checker remains isolated in:
-
-```text
-src/campaign_assistant/legacy/gamebus_campaign_checker.py
-```
-
-Use the wrapper instead of importing the legacy checker directly:
-
-```python
-from campaign_assistant.checker import run_campaign_checks
-
-result = run_campaign_checks(
-    file_path=file_path,
-    checks=selected_checks,
-    export_excel=False,
-)
-```
 
 ## Streamlit Session State Conventions
 
@@ -300,18 +265,6 @@ Diagram semantics:
 
 The diagram is an inspection aid. It does not replace the campaign export.
 
-## Common Pitfalls to Avoid
-
-1. Reintroducing removed metadata/workspace/sidecar functionality into the paper-release branch.
-2. Treating export structure counts as checker issues.
-3. Letting the LLM contradict deterministic checker output.
-4. Letting theory support claim formal TTM/COM-B/BCT alignment without explicit evidence.
-5. Claiming weight-loss or health-effectiveness outcomes from export structure alone.
-6. Using Graphviz or another system-level dependency for the diagram.
-7. Rendering SVG with `st.image()`; use HTML/component rendering or download instead.
-8. Adding old compatibility shims just to satisfy obsolete tests.
-9. Importing the legacy checker directly instead of using the wrapper.
-10. Hiding important assistant guardrail behavior inside UI-only code; keep policy logic centralized in `response_guard.py` and `fact_sheet.py`.
 
 ## Testing Strategy
 

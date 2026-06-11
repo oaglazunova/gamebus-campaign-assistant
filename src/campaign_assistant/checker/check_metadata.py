@@ -68,10 +68,9 @@ CHECK_EXPLANATIONS: dict[str, str] = {
         "**Consistency check** reads the `visualizations`, `challenges`, and `waves` sheets. "
         "For each visualization, the check selects challenges whose `visualizations` value equals that "
         "visualization id. It reports an initial challenge when `is_initial_level == 1` and `failure_next` "
-        "does not equal the challenge's own id. It finds terminal challenges by resolving `success_next` "
-        "and checking whether the resolved next challenge has the same id as the current challenge; such "
-        "terminal challenges are expected to lead to themselves on success. Active-wave status is derived "
-        "from the visualization wave. Severity: high."
+        "does not equal the challenge's own id. Terminal levels are handled by the reachability-oriented "
+        "checks, where a terminal level is represented by `success_next` pointing back to the same challenge. "
+        "Active-wave status is derived from the visualization wave. Severity: high."
     ),
     VISUALIZATIONINTERN: (
         "**Visualization internals check** reads the `visualizations`, `challenges`, and `waves` sheets. "
