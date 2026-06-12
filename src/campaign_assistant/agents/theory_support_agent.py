@@ -107,9 +107,169 @@ def _is_weak_llm_answer(text: str) -> bool:
     return False
 
 
-def _outcome_safe_response(context: dict[str, Any]) -> str:
-    counts = _counts_from_context(context)
+def _normalized(question: str) -> str:
+    return " ".join(str(question or "").lower().strip().split())
 
+
+def _normalized(question: str) -> str:
+    return " ".join(str(question or "").lower().strip().split())
+
+
+def _is_improvement_question(question: str) -> bool:
+    normalized = _normalized(question)
+
+    return any(
+        phrase in normalized
+        for phrase in [
+            "how to make",
+            "how can i make",
+            "how do i make",
+            "make the campaign",
+            "make this campaign",
+            "make it more",
+            "more aligned",
+            "better aligned",
+            "more theory-aligned",
+            "more theory grounded",
+            "more theory-grounded",
+            "improve",
+            "strengthen",
+            "what should i change",
+            "what should i add",
+            "how should i design",
+            "how to design",
+            "what would you change",
+        ]
+    )
+
+
+def _is_ttm_improvement_question(question: str) -> bool:
+    normalized = _normalized(question)
+
+    if not any(
+        term in normalized
+        for term in [
+            "ttm",
+            "transtheoretical",
+            "stage of change",
+            "stages of change",
+        ]
+    ):
+        return False
+
+    return any(
+        phrase in normalized
+        for phrase in [
+            "how to make",
+            "how can i make",
+            "make the campaign",
+            "make this campaign",
+            "make it",
+            "more ttm-aligned",
+            "ttm-aligned",
+            "align with ttm",
+            "aligned with ttm",
+            "make it aligned",
+            "improve",
+            "strengthen",
+            "what should i change",
+            "what should i add",
+            "how should i design",
+        ]
+    )
+
+
+def _com_b_improvement_response(context: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "This is advisory theory-oriented feedback, not formal validation.",
+            "",
+            "To make the campaign more COM-B-aligned, I would explicitly design each task around capability, opportunity, and motivation.",
+            "",
+            "Recommended design changes:",
+            "",
+            "1. **Define the target behaviour clearly**",
+            "For each task, specify what behaviour the participant should perform, for example walking, meal planning, sleep preparation, food logging, or reflection.",
+            "",
+            "2. **Check Capability**",
+            "Add support for knowledge, skills, and confidence. Examples: short explanations, examples, tutorials, simple first steps, or reflection tasks that help users understand what to do.",
+            "",
+            "3. **Check Opportunity**",
+            "Address practical and social barriers. Examples: low-effort alternatives, reminders, environmental prompts, social support, or tasks that help users plan around time, weather, family, or work constraints.",
+            "",
+            "4. **Check Motivation**",
+            "Support intention, positive reinforcement, habit formation, and personal relevance. Examples: progress feedback, meaningful goals, reflection on benefits, streaks used carefully, and supportive rewards.",
+            "",
+            "5. **Avoid relying on points alone**",
+            "Points and levels can support motivation, but they do not by themselves address capability or opportunity. Make sure the campaign also helps users understand, plan, and perform the behaviour.",
+            "",
+            "6. **Create a COM-B mapping table**",
+            "Use columns such as: task/level, target behaviour, Capability support, Opportunity support, Motivation support, missing support, and proposed change.",
+        ]
+    )
+
+
+def _sdt_improvement_response(context: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "This is advisory theory-oriented feedback, not formal validation.",
+            "",
+            "To make the campaign more Self-Determination Theory-aligned, I would check whether the design supports autonomy, competence, and relatedness without making the gamification feel controlling.",
+            "",
+            "Recommended design changes:",
+            "",
+            "1. **Strengthen autonomy**",
+            "Give users meaningful choices where possible: choice of task, timing, difficulty, goal, or reflection topic. Avoid language that sounds pressuring, guilt-based, or controlling.",
+            "",
+            "2. **Strengthen competence**",
+            "Make tasks achievable, give clear instructions, show progress, and help users experience mastery. Difficulty should increase gradually rather than suddenly.",
+            "",
+            "3. **Strengthen relatedness**",
+            "Use social or team elements to create support and recognition, not shame or pressure. If the campaign has teams, feedback should feel encouraging rather than competitive in a harmful way.",
+            "",
+            "4. **Review rewards carefully**",
+            "Points, badges, and levels should support meaningful progress. If rewards feel like the only reason to act, they may undermine autonomous motivation.",
+            "",
+            "5. **Improve feedback tone**",
+            "Feedback should explain why a task matters, acknowledge effort, and support user choice. Avoid feedback that implies failure, blame, or obedience.",
+            "",
+            "6. **Create an SDT mapping table**",
+            "Use columns such as: task/level, autonomy support, competence support, relatedness support, potentially controlling elements, and proposed change.",
+        ]
+    )
+
+
+def _bct_improvement_response(context: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "This is advisory theory-oriented feedback, not formal validation.",
+            "",
+            "To make the campaign more BCT-grounded, I would explicitly select which behaviour-change techniques each task is meant to implement instead of trying to infer them afterwards.",
+            "",
+            "Recommended design changes:",
+            "",
+            "1. **Define the target behaviour for each task**",
+            "A BCT is only meaningful if it is linked to a clear behaviour, such as walking, logging meals, reducing screen time, preparing food, or reflecting on sleep habits.",
+            "",
+            "2. **Choose a small set of intended BCTs**",
+            "Useful candidates may include goal setting, action planning, self-monitoring, feedback, prompts/cues, graded tasks, problem solving, social support, and rewards.",
+            "",
+            "3. **Operationalise each BCT visibly**",
+            "Do not only label a task as a BCT. Make sure the task actually contains the mechanism. For example, action planning should ask when, where, and how the behaviour will be done.",
+            "",
+            "4. **Check whether rewards match meaningful behaviour**",
+            "Points should reward relevant behaviour or useful preparation, not only clicking through tasks.",
+            "",
+            "5. **Avoid over-coding**",
+            "Do not claim too many BCTs for one task unless the content clearly supports them. A smaller, well-justified set is more credible.",
+            "",
+            "6. **Create a BCT mapping table**",
+            "Use columns such as: task/level, target behaviour, intended BCT, evidence in task text, missing content, and proposed rewrite.",
+        ]
+    )
+
+
+def _outcome_safe_response(context: dict[str, Any]) -> str:
     lines = [
         "This is advisory theory-oriented feedback, not formal validation.",
         "",
@@ -122,15 +282,6 @@ def _outcome_safe_response(context: dict[str, Any]) -> str:
         "self-monitoring, goal setting, or support.",
     ]
 
-    if counts:
-        lines.append("")
-        lines.append("Visible campaign structure:")
-        lines.append(f"- Waves: {counts.get('waves', 0)}")
-        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
-        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
-        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
-        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
-
     lines.append("")
     lines.append(
         "To assess likely effectiveness, you would need the intervention rationale, "
@@ -142,8 +293,6 @@ def _outcome_safe_response(context: dict[str, Any]) -> str:
 
 
 def _bct_safe_response(context: dict[str, Any]) -> str:
-    counts = _counts_from_context(context)
-
     lines = [
         "This is advisory theory-oriented feedback, not formal validation.",
         "",
@@ -162,17 +311,6 @@ def _bct_safe_response(context: dict[str, Any]) -> str:
         "- **Problem solving**: help users identify barriers and plan alternatives.",
     ]
 
-    if counts:
-        lines.append("")
-        lines.append(
-            "The current export structure shows "
-            f"{counts.get('tasks', 0)} task(s), "
-            f"{counts.get('challenges', 0)} challenge/level item(s), and "
-            f"{counts.get('transitions', 0)} transition(s). "
-            "This structure may support BCT implementation, but it does not prove that "
-            "specific BCTs are present."
-        )
-
     lines.append("")
     lines.append(
         "For a stronger assessment, use organizer-approved design context describing "
@@ -183,8 +321,6 @@ def _bct_safe_response(context: dict[str, Any]) -> str:
 
 
 def _ttm_safe_response(context: dict[str, Any]) -> str:
-    counts = _counts_from_context(context)
-
     lines = [
         "This is advisory theory-oriented feedback, not formal validation.",
         "",
@@ -200,15 +336,6 @@ def _ttm_safe_response(context: dict[str, Any]) -> str:
         "- feedback adapted to the user's readiness to change.",
     ]
 
-    if counts:
-        lines.append("")
-        lines.append("Visible campaign structure:")
-        lines.append(f"- Waves: {counts.get('waves', 0)}")
-        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
-        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
-        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
-        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
-
     lines.append("")
     lines.append(
         "If you want to make the campaign more TTM-aligned, consider explicitly mapping "
@@ -218,17 +345,52 @@ def _ttm_safe_response(context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _ttm_improvement_response(context: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "This is advisory theory-oriented feedback, not formal validation.",
+            "",
+            "To make the campaign more TTM-aligned, I would make the stage logic explicit rather than relying on waves, levels, or points alone.",
+            "",
+            "Recommended design changes:",
+            "",
+            "1. **Define the intended stage for each task or level**",
+            "Map campaign content to precontemplation, contemplation, preparation, action, and maintenance. This makes it clear which part of behaviour change each task is meant to support.",
+            "",
+            "2. **Make task content stage-specific**",
+            "- Precontemplation: awareness, reflection, perceived relevance, risks/benefits.",
+            "- Contemplation: pros/cons, personal motivation, barriers, ambivalence.",
+            "- Preparation: planning, goal setting, implementation intentions, choosing first steps.",
+            "- Action: concrete behaviour performance, self-monitoring, feedback, reinforcement.",
+            "- Maintenance: habit support, relapse prevention, coping plans, long-term identity support.",
+            "",
+            "3. **Add readiness-based progression logic**",
+            "Progression should reflect readiness or behavioural evidence, not only task completion or points. For example, users could move from preparation to action after completing planning tasks or recording an initial behaviour.",
+            "",
+            "4. **Add relapse/recycling paths**",
+            "TTM assumes that people may move backwards as well as forwards. The campaign should support returning to an earlier stage without framing it as failure.",
+            "",
+            "5. **Adapt feedback to the user’s stage**",
+            "Early-stage feedback should be reflective and non-controlling. Later-stage feedback can be more action-oriented, reinforcing, and focused on maintaining progress.",
+            "",
+            "6. **Document the theory mapping**",
+            "Create a simple design table with columns such as: task/level, intended TTM stage, target behaviour, intended mechanism, feedback type, and progression rule.",
+            "",
+            "A practical next step is to review the current tasks and assign each one to a TTM stage. Tasks that do not clearly fit a stage may need rewriting, moving, or additional feedback logic.",
+        ]
+    )
+
+
 def _theory_clarification_response() -> str:
     return (
         "I can help with that, but theory grounding depends on the framework. "
-        "Which theory or framework should I use: TTM, COM-B, BCT Taxonomy, "
-        "Self-Determination Theory, or another framework?"
+        "Choose one of the supported lenses: TTM for readiness/stages of change, "
+        "COM-B for capability/opportunity/motivation, BCT Taxonomy for concrete behaviour-change techniques, "
+        "or Self-Determination Theory (SDT) for autonomy, competence, and relatedness."
     )
 
 
 def _com_b_safe_response(context: dict[str, Any]) -> str:
-    counts = _counts_from_context(context)
-
     lines = [
         "This is advisory theory-oriented feedback, not formal validation.",
         "",
@@ -242,15 +404,6 @@ def _com_b_safe_response(context: dict[str, Any]) -> str:
         "or the intended mechanism of action.",
     ]
 
-    if counts:
-        lines.append("")
-        lines.append("Visible campaign structure:")
-        lines.append(f"- Waves: {counts.get('waves', 0)}")
-        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
-        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
-        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
-        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
-
     lines.append("")
     lines.append(
         "A useful next step is to map each campaign task to one or more COM-B components "
@@ -262,8 +415,6 @@ def _com_b_safe_response(context: dict[str, Any]) -> str:
 
 
 def _sdt_safe_response(context: dict[str, Any]) -> str:
-    counts = _counts_from_context(context)
-
     lines = [
         "This is advisory theory-oriented feedback, not formal validation.",
         "",
@@ -276,15 +427,6 @@ def _sdt_safe_response(context: dict[str, Any]) -> str:
         "The export shows structure, tasks, levels, and transitions, but it does not fully show tone, rationale, "
         "participant choice, or how feedback is experienced by users.",
     ]
-
-    if counts:
-        lines.append("")
-        lines.append("Visible campaign structure:")
-        lines.append(f"- Waves: {counts.get('waves', 0)}")
-        lines.append(f"- Visualizations: {counts.get('visualizations', 0)}")
-        lines.append(f"- Challenges/levels: {counts.get('challenges', 0)}")
-        lines.append(f"- Tasks: {counts.get('tasks', 0)}")
-        lines.append(f"- Transitions: {counts.get('transitions', 0)}")
 
     lines.append("")
     lines.append(
@@ -311,6 +453,18 @@ class TheorySupportAgent(BaseAgent):
 
         if is_outcome_question(question):
             return _outcome_safe_response(context)
+
+        if is_bct_question(question) and _is_improvement_question(question):
+            return _bct_improvement_response(context)
+
+        if is_ttm_question(question) and _is_improvement_question(question):
+            return _ttm_improvement_response(context)
+
+        if is_com_b_question(question) and _is_improvement_question(question):
+            return _com_b_improvement_response(context)
+
+        if is_sdt_question(question) and _is_improvement_question(question):
+            return _sdt_improvement_response(context)
 
         if is_bct_question(question):
             return _bct_safe_response(context)

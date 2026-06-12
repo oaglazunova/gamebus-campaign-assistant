@@ -161,7 +161,7 @@ def render_assistant_page_status(result: dict[str, Any], message_count: int) -> 
 
 
 def render_llm_status_panel() -> None:
-    with st.expander("LLM status", expanded=False):
+    with st.expander("LLM configuration", expanded=False):
         if not llm_enabled():
             st.info(
                 "LLM support is disabled. The assistant will use deterministic fallback responses."

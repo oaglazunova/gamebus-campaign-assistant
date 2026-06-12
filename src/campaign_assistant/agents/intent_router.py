@@ -51,6 +51,12 @@ THEORY_KEYWORDS = [
     "outcome",
     "adherence",
     "engagement",
+    "self-determination",
+    "self determination",
+    "sdt",
+    "autonomy",
+    "competence",
+    "relatedness",
 ]
 
 CAMPAIGN_SUPPORT_KEYWORDS = [

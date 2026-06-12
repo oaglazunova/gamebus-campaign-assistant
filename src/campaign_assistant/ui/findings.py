@@ -154,16 +154,6 @@ def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
     if wave_id not in (None, ""):
         parts.append(f"Wave ID: {wave_id}")
 
-    fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
-    if fix_guidance:
-        parts.extend(
-            [
-                "",
-                "Deterministic GameBus Studio fix guidance:",
-                fix_guidance,
-            ]
-        )
-
     return "\n".join(parts)
 
 

@@ -62,15 +62,13 @@ Use cautious wording:
 
 
 _DETERMINISTIC_GUIDANCE_QUESTION_PATTERNS = [
-    r"\bhow\b.*\b(fix|repair|correct|solve|resolve|change)\b",
-    r"\bwhat\b.*\b(fix|repair|correct|change|inspect)\b",
-    r"\bwhere\b.*\b(fix|repair|change|inspect|click)\b",
+    r"\bhow\b.*\b(fix|repair|correct|solve|resolve|change|edit)\b",
+    r"\bwhat\b.*\b(fix|repair|correct|change|edit)\b",
+    r"\bwhere\b.*\b(fix|repair|change|edit|click)\b",
+    r"\bwhich\b.*\b(field|fields)\b.*\b(change|edit|set|fill)\b",
+    r"\bwhat\b.*\b(field|fields)\b.*\b(change|edit|set|fill)\b",
     r"\bmake\b.*\breachable\b",
     r"\bhow\b.*\breachable\b",
-    r"\bwhat should i inspect\b",
-    r"\bwhat should i check\b",
-    r"\bexplain this campaign finding\b",
-    r"\bexplain (this|the) finding\b",
 ]
 
 
@@ -378,16 +376,21 @@ def _deterministic_guidance_answer(
 def _issue_summary_answer(question: str, context: dict[str, Any]) -> str | None:
     normalized = _normalized(question)
 
-    if not any(
-        phrase in normalized
-        for phrase in [
-            "summarize the issues",
-            "summarise the issues",
-            "summary of issues",
-            "summarize findings",
-            "summarise findings",
-        ]
-    ):
+    if _is_deterministic_guidance_question(question):
+        return None
+
+    overview_patterns = [
+        r"\bsummarize\b.*\b(issue|issues|finding|findings)\b",
+        r"\bsummarise\b.*\b(issue|issues|finding|findings)\b",
+        r"\bsummary\b.*\b(issue|issues|finding|findings)\b",
+        r"\bexplain\b.*\b(issue|issues|finding|findings)\b",
+        r"\bimportant\b.*\b(issue|issues|finding|findings)\b",
+        r"\bmost important\b",
+        r"\bmain\b.*\b(issue|issues|finding|findings)\b",
+        r"\btop\b.*\b(issue|issues|finding|findings)\b",
+    ]
+
+    if not any(re.search(pattern, normalized) for pattern in overview_patterns):
         return None
 
     analysis = context.get("analysis", {}) or {}
@@ -507,13 +510,11 @@ def _highest_priority_finding_answer(question: str, context: dict[str, Any]) -> 
     if url:
         lines.append(f"**GameBus Studio URL:** {url}")
 
-    if guidance:
-        lines.append("")
-        lines.append("What to inspect:")
-        lines.append(str(guidance))
-    else:
-        lines.append("")
-        lines.append("No deterministic GameBus Studio guidance is available for this finding.")
+    lines.append("")
+    lines.append(
+        "This identifies the highest-priority finding. "
+        "Ask `How do I fix this finding?` if you want the GameBus Studio repair steps."
+    )
 
     return "\n".join(lines)
 
@@ -537,7 +538,7 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
     issue_count_by_check = analysis.get("issue_count_by_check", {}) or {}
 
     lines = [
-        "LLM support is not available, so I can only provide deterministic checker-based guidance.",
+        "Using deterministic checker-based guidance for this answer.",
         "",
         f"The selected checks found **{total}** issue(s).",
     ]
@@ -602,22 +603,29 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
 
     highest = top_findings[0]
     guidance = highest.get("deterministic_gamebus_fix_guidance")
+    wants_fix_guidance = _is_deterministic_guidance_question(question)
 
-    if guidance:
+    if guidance and wants_fix_guidance:
         lines.append("")
         lines.append("Deterministic guidance for the highest-priority finding:")
         lines.append(str(guidance))
+
+        source_facts = highest.get("gamebus_studio_source_facts")
+        if source_facts:
+            lines.append("")
+            lines.append("Relevant GameBus Studio facts:")
+            lines.append(str(source_facts))
+    elif guidance:
+        lines.append("")
+        lines.append(
+            "Ask `How do I fix the highest-priority finding?` "
+            "or `How do I fix the secrets issues?` to see the step-by-step fix guidance."
+        )
     else:
         lines.append("")
         lines.append(
             "No deterministic GameBus Studio guidance is available for the highest-priority finding."
         )
-
-    source_facts = highest.get("gamebus_studio_source_facts")
-    if source_facts:
-        lines.append("")
-        lines.append("Relevant GameBus Studio facts:")
-        lines.append(str(source_facts))
 
     return "\n".join(lines)
 
@@ -657,6 +665,10 @@ class CampaignSupportAgent(BaseAgent):
         if _is_prioritization_question(question):
             return _prioritization_answer()
 
+        deterministic_answer = _deterministic_guidance_answer(question, context)
+        if deterministic_answer:
+            return deterministic_answer
+
         issue_summary = _issue_summary_answer(question, context)
         if issue_summary:
             return issue_summary
@@ -668,10 +680,6 @@ class CampaignSupportAgent(BaseAgent):
         structure_answer = _campaign_structure_answer(question, context)
         if structure_answer:
             return structure_answer
-
-        deterministic_answer = _deterministic_guidance_answer(question, context)
-        if deterministic_answer:
-            return deterministic_answer
 
         check_answer = _check_explanation_answer(question)
         if check_answer:
