@@ -15,7 +15,7 @@ CHECK_HINTS: dict[str, str] = {
     SECRETS: "Missing or conflicting SECRET conditions.",
     SPELLCHECKER: "German-only spellcheck for task and challenge names.",
     REACHABILITY: "Whether initial levels can reach terminal success levels.",
-    CONSISTENCY: "Basic level-transition consistency, especially initial and terminal levels.",
+    CONSISTENCY: "Whether initial/start levels fail back to themselves.",
     VISUALIZATIONINTERN: "Whether reachable terminal levels stay within the expected visualization and label structure.",
     TARGETPOINTSREACHABLE: "A challenge target can be reached from its task points and timing settings.",
     TTMSTRUCTURE: (

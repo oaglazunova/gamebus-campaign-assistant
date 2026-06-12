@@ -119,8 +119,7 @@ def _what_this_means(check: str, finding: str) -> str | None:
 
     if check_normalized == "consistency":
         return (
-            "This finding means that the level transition settings do not match the checker’s expected structural "
-            "rules for initial or terminal levels."
+            "This finding means that an initial/start level does not follow the expected failure-transition rule: when the target is not met on time, it should point back to itself."
         )
 
     if check_normalized == "ttm":

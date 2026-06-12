@@ -120,7 +120,7 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
         verification=_GENERIC_VERIFICATION,
     ),
     CONSISTENCY: GameBusFixGuidance(
-        title="Fix inconsistent start/terminal transition settings",
+        title="Fix inconsistent start-level failure settings",
         studio_location=(
             "Open GameBus Studio campaign editor.",
             "Open the campaign and the visualization/group shown in the finding.",

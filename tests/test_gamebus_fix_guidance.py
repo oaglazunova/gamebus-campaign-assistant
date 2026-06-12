@@ -59,7 +59,7 @@ def test_target_points_missing_values_gets_specific_guidance():
     text = gamebus_fix_guidance_markdown_for_issue(
         {
             "check": "targetpointsreachable",
-            "message": "Challenge reachable points (None) cannot be computed, missing values in tasks.",
+            "message": "Challenge reachable points cannot be computed because required target-point inputs are missing or invalid. Check the challenge evaluation interval and the task point/reward/reset-window values."
         }
     )
 
