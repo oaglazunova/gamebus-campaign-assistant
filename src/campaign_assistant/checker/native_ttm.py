@@ -8,13 +8,19 @@ import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, TTMSTRUCTURE
 from campaign_assistant.checker.table_utils import (
+    VisualizationFlowKind,
     _active_wave_ids,
     _challenge_index,
     _challenge_url,
+    _challenges_for_visualization,
+    _classify_visualization_flow,
     _clean_scalar,
+    _coverage_note,
     _get_table,
     _is_initial,
     _is_terminal,
+    _normalise_id,
+    _same_id,
 )
 
 
@@ -32,50 +38,59 @@ def load_ttm_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
 def _challenge_ref(challenge: Mapping[str, Any] | None) -> str:
     if challenge is None:
         return "missing challenge"
-    challenge_id = _clean_scalar(challenge.get("id"))
+
+    challenge_id = _normalise_id(challenge.get("id"))
     challenge_name = _clean_scalar(challenge.get("name")) or "unnamed"
+
     return f"{challenge_id} ({challenge_name})"
 
 
-def _same_challenge(left: Mapping[str, Any] | None, right: Mapping[str, Any] | None) -> bool:
+def _same_challenge(
+    left: Mapping[str, Any] | None,
+    right: Mapping[str, Any] | None,
+) -> bool:
     if left is None or right is None:
         return False
-    return left.get("id") == right.get("id")
+
+    return _same_id(left.get("id"), right.get("id"))
 
 
 def _get_success(
     challenge: Mapping[str, Any] | None,
-    challenges: Mapping[Any, dict[str, Any]],
+    challenges: Mapping[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
     if challenge is None:
         return None
-    return challenges.get(challenge.get("success_next"))
+
+    return challenges.get(_normalise_id(challenge.get("success_next")) or "")
 
 
 def _get_failure(
     challenge: Mapping[str, Any] | None,
-    challenges: Mapping[Any, dict[str, Any]],
+    challenges: Mapping[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
     if challenge is None:
         return None
-    return challenges.get(challenge.get("failure_next"))
+
+    return challenges.get(_normalise_id(challenge.get("failure_next")) or "")
 
 
 def _issue(
     *,
     visualization: Mapping[str, Any],
     challenge: Mapping[str, Any],
-    active_wave_ids: set[Any],
+    active_wave_ids: set[str],
     message: str,
 ) -> Issue:
-    wave_id = _clean_scalar(visualization.get("wave"))
+    wave_id = _normalise_id(visualization.get("wave"))
+
     return Issue(
         check=TTMSTRUCTURE,
         severity="medium",
         active_wave=wave_id in active_wave_ids if wave_id is not None else False,
-        visualization_id=_clean_scalar(visualization.get("id")),
+        visualization_id=_normalise_id(visualization.get("id")),
         visualization=str(_clean_scalar(visualization.get("description")) or ""),
-        challenge_id=_clean_scalar(challenge.get("id")),
+        challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
         message=message,
@@ -88,7 +103,7 @@ def _add_issue(
     *,
     visualization: Mapping[str, Any],
     challenge: Mapping[str, Any],
-    active_wave_ids: set[Any],
+    active_wave_ids: set[str],
     message: str,
 ) -> None:
     issues.append(
@@ -105,21 +120,25 @@ def _check_ttm_challenge(
     *,
     visualization: Mapping[str, Any],
     challenge: Mapping[str, Any],
-    challenges: Mapping[Any, dict[str, Any]],
-    active_wave_ids: set[Any],
+    challenges: Mapping[str, dict[str, Any]],
+    active_wave_ids: set[str],
     issues: list[Issue],
     no_relapse_levels: int,
     last_level: Mapping[str, Any] | None = None,
-    visited_success_ids: set[Any] | None = None,
+    visited_success_ids: set[str] | None = None,
 ) -> None:
     """
     Check the HW8 long-term TTM-like progression structure.
 
     This ports the original GameBusChecker TTM check, but adds defensive handling
-    for missing successor references and success-chain cycles.
+    for missing successor references, comma-separated visualization ids, and
+    success-chain cycles.
     """
     visited_success_ids = set() if visited_success_ids is None else set(visited_success_ids)
-    challenge_id = challenge.get("id")
+    challenge_id = _normalise_id(challenge.get("id"))
+
+    if challenge_id is None:
+        return
 
     if challenge_id in visited_success_ids:
         _add_issue(
@@ -226,6 +245,7 @@ def _check_ttm_challenge(
         return
 
     at_risk_level = failure_level
+
     if at_risk_level is None:
         _add_issue(
             issues,
@@ -309,16 +329,38 @@ def run_native_ttm_tables(
     active_wave_ids = _active_wave_ids(waves_df, now=now)
 
     issues: list[Issue] = []
+    notes: list[str] = []
+    memberships_evaluated = 0
 
     for _, vis_row in visualizations_df.iterrows():
         visualization = vis_row.to_dict()
-        visualization_id = visualization.get("id")
-        visualization_challenges = [
+        visualization_id = _normalise_id(visualization.get("id"))
+
+        if visualization_id is None:
+            continue
+
+        visualization_challenges = _challenges_for_visualization(
+            challenges,
+            visualization_id,
+        )
+        memberships_evaluated += len(visualization_challenges)
+
+        flow_kind = _classify_visualization_flow(
+            visualization,
+            visualization_challenges,
+            challenges,
+        )
+
+        # TTM is a progression-shape check. It should not run on cyclic/support
+        # visualizations such as Tips/Info/Support, nor on non-progression views.
+        if flow_kind != VisualizationFlowKind.PROGRESSION:
+            continue
+
+        initial_challenges = [
             challenge
-            for challenge in challenges.values()
-            if challenge.get("visualizations") == visualization_id
+            for challenge in visualization_challenges
+            if _is_initial(challenge)
         ]
-        initial_challenges = [challenge for challenge in visualization_challenges if _is_initial(challenge)]
 
         for initial_challenge in initial_challenges:
             _check_ttm_challenge(
@@ -330,12 +372,22 @@ def run_native_ttm_tables(
                 no_relapse_levels=no_relapse_levels,
             )
 
+    coverage_problem = _coverage_note(
+        check_name="TTM structure",
+        memberships=memberships_evaluated,
+        challenge_count=len(challenges_df),
+        visualization_count=len(visualizations_df),
+    )
+
+    if coverage_problem:
+        notes.append(coverage_problem)
+
     issues.sort(key=lambda item: (item.active_wave, item.challenge_id), reverse=True)
 
     return {
-        "status": "Failed" if issues else "Passed",
+        "status": "Error" if coverage_problem else "Failed" if issues else "Passed",
         "issues": issues,
-        "notes": [],
+        "notes": notes,
     }
 
 

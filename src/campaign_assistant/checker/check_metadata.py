@@ -14,9 +14,9 @@ from campaign_assistant.checker.schema import (
 CHECK_HINTS: dict[str, str] = {
     SECRETS: "Missing or conflicting SECRET conditions.",
     SPELLCHECKER: "German-only spellcheck for task and challenge names.",
-    REACHABILITY: "Whether initial levels can reach terminal success levels.",
-    CONSISTENCY: "Whether initial/start levels fail back to themselves.",
-    VISUALIZATIONINTERN: "Whether reachable terminal levels stay within the expected visualization and label structure.",
+    REACHABILITY: "Whether progression visualizations have initial levels that can reach terminal success levels.",
+    CONSISTENCY: "Whether initial/start levels in progression visualizations fail back to themselves.",
+    VISUALIZATIONINTERN: "Whether reachable terminal levels stay within the expected progression visualization and label structure.",
     TARGETPOINTSREACHABLE: "A challenge target can be reached from its task points and timing settings.",
     TTMSTRUCTURE: (
         "HW8 long-term-campaign-specific TTM progression check. "

@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-06-14
+
+### Fixed
+
+* Fixed existing native checkers so they correctly handle comma-separated `visualizations` references, such as `2002, 2007, 2008`.
+* Normalized internal ID handling across existing checkers so numeric and string Excel IDs are compared consistently.
+* Fixed structural checks that could previously false-pass by evaluating zero matching challenge-visualization links.
+* Fixed reachability, consistency, visualization-internal, target-points, secrets, and TTM checks to resolve challenge and visualization references more reliably.
+* Fixed TTM successor lookup so both `success_next` and `failure_next` references are normalized before lookup.
+* Fixed visualization-internal checking so challenges belonging to multiple visualizations are handled correctly.
+
+### Changed
+
+* Reachability now treats cyclic/support visualizations, such as Tips/Info/Support views in English, Dutch, German, and Portuguese, as non-progression content where terminal levels are not expected.
+* Consistency and TTM checks now apply progression-specific rules only to progression visualizations, avoiding false issues for cyclic/support views.
+* Target-points reachability now reports a clearer message when reachable points cannot be computed because required challenge or task values are missing or invalid.
+* Checker metadata and tests were updated to reflect normalized string IDs and the revised progression/support visualization behavior.
+
+
+## [0.2.2] - 2026-06-13
+
+### Changed
+
+* Improved Assistant quick actions so campaign-level suggested prompts use deterministic responses instead of relying on the local LLM.
+* Renamed the quick action from “Explain the highest-priority finding” to “Explain the highest-priority findings”.
+* Updated highest-priority finding explanations to group repeated issue types, so duplicate findings such as repeated secret-copy issues are explained once with an example.
+* Improved follow-up handling so quick actions that focus the top finding update the selected finding used by later questions such as “How do I fix this?”.
+* Improved mixed priority/fix follow-ups so questions such as “Why should I inspect this first and how do I fix it?” can include both the prioritization rationale and deterministic GameBus Studio guidance.
+* Improved theory-support routing so short framework questions such as TTM, COM-B, BCT, and SDT use cautious deterministic responses instead of weak local LLM output.
+* Improved TTM follow-up handling when the user provides explicit stage-mapping context, treating it as user-provided design context rather than as evidence from the export.
+* Strengthened weak LLM response filtering to reject meta non-answers such as “I’m ready to help” or “please provide more details”.
+
+### Fixed
+
+* Fixed a bug where “How do I fix this?” could refer to an older selected finding instead of the finding shown by the latest Assistant quick action.
+* Fixed acknowledgement handling so short replies such as “ok” are answered deterministically instead of being routed to the unknown-answer fallback.
+* Fixed Assistant import/formatting regressions caused by mixed tabs and spaces in `app.py`.
+
+### Tests
+
+* Added regression tests for deterministic quick actions, grouped highest-priority finding explanations, selected-finding focus updates, acknowledgement routing, mixed priority/fix questions, and safer theory-agent routing.
+* Expanded Assistant interaction tests to cover conversation-history propagation and answer-source metadata.
+
+
 ## [0.2.1] - 2026-06-11
 
 ### Added

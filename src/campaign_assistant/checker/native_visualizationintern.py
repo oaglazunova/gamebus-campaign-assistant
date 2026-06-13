@@ -8,13 +8,20 @@ import pandas as pd
 
 from campaign_assistant.checker.schema import Issue, VISUALIZATIONINTERN
 from campaign_assistant.checker.table_utils import (
+    VisualizationFlowKind,
     _active_wave_ids,
+    _challenge_belongs_to_visualization,
     _challenge_index,
     _challenge_url,
+    _challenges_for_visualization,
+    _classify_visualization_flow,
     _clean_scalar,
+    _coverage_note,
     _get_table,
     _is_initial,
     _is_terminal,
+    _normalise_id,
+    _reference_ids,
     _visualization_index,
 )
 
@@ -28,32 +35,43 @@ def load_visualizationintern_tables(file_path: str | Path) -> dict[str, pd.DataF
 
 
 def _challenge_ref(challenge: Mapping[str, Any]) -> str:
-    challenge_id = _clean_scalar(challenge.get("id"))
+    challenge_id = _normalise_id(challenge.get("id"))
     challenge_name = _clean_scalar(challenge.get("name")) or "unnamed"
+
     return f"{challenge_id} ({challenge_name})"
 
 
 def _visualization_ref(
-    visualization_id: Any,
-    visualizations: Mapping[Any, dict[str, Any]],
+    visualization_ids: Any,
+    visualizations: Mapping[str, dict[str, Any]],
 ) -> str:
-    clean_id = _clean_scalar(visualization_id)
-    visualization = visualizations.get(visualization_id)
-    if not visualization:
-        return str(clean_id)
+    refs: list[str] = []
 
-    description = _clean_scalar(visualization.get("description")) or "unnamed"
-    return f"{clean_id} ({description})"
+    for visualization_id in _reference_ids(visualization_ids):
+        visualization = visualizations.get(visualization_id)
+
+        if visualization is None:
+            refs.append(str(visualization_id))
+            continue
+
+        description = _clean_scalar(visualization.get("description")) or "unnamed"
+        refs.append(f"{visualization_id} ({description})")
+
+    return ", ".join(refs) if refs else "missing visualization"
 
 
+def _get_success(
+    challenge: Mapping[str, Any],
+    challenges: Mapping[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    return challenges.get(_normalise_id(challenge.get("success_next")) or "")
 
-def _get_success(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str, Any]]) -> dict[str, Any] | None:
-    return challenges.get(challenge.get("success_next"))
 
-
-def _get_failure(challenge: Mapping[str, Any], challenges: Mapping[Any, dict[str, Any]]) -> dict[str, Any] | None:
-    return challenges.get(challenge.get("failure_next"))
-
+def _get_failure(
+    challenge: Mapping[str, Any],
+    challenges: Mapping[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    return challenges.get(_normalise_id(challenge.get("failure_next")) or "")
 
 
 def _is_missing_label(value: Any) -> bool:
@@ -66,69 +84,72 @@ def _is_missing_label(value: Any) -> bool:
 def _labels_equal(left: Any, right: Any) -> bool:
     left_missing = _is_missing_label(left)
     right_missing = _is_missing_label(right)
+
     if left_missing and right_missing:
         return True
+
     if left_missing or right_missing:
         return False
+
     return left == right
 
 
 def _reachable_terminal_challenges(
     challenge: Mapping[str, Any],
-    challenges: Mapping[Any, dict[str, Any]],
-    visited_ids: set[Any] | None = None,
+    challenges: Mapping[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    visited_ids = set() if visited_ids is None else set(visited_ids)
-    challenge_id = challenge.get("id")
+    terminals: dict[str, dict[str, Any]] = {}
+    visited_ids: set[str] = set()
 
-    if challenge_id in visited_ids:
+    start_id = _normalise_id(challenge.get("id"))
+    if start_id is None:
         return []
 
-    visited_ids.add(challenge_id)
+    stack: list[dict[str, Any]] = [dict(challenge)]
 
-    if _is_terminal(challenge, challenges):
-        return [dict(challenge)]
+    while stack:
+        current = stack.pop()
+        current_id = _normalise_id(current.get("id"))
 
-    result: list[dict[str, Any]] = []
-    next_candidates = [
-        _get_success(challenge, challenges),
-        _get_failure(challenge, challenges),
-    ]
-
-    for next_challenge in next_candidates:
-        if next_challenge is None:
+        if current_id is None or current_id in visited_ids:
             continue
-        next_id = next_challenge.get("id")
-        if next_id in visited_ids:
-            continue
-        result.extend(
-            _reachable_terminal_challenges(
-                next_challenge,
-                challenges,
-                visited_ids=visited_ids,
-            )
-        )
 
-    return result
+        visited_ids.add(current_id)
+
+        if _is_terminal(current, challenges):
+            terminals[current_id] = dict(current)
+            continue
+
+        for next_challenge in (
+            _get_success(current, challenges),
+            _get_failure(current, challenges),
+        ):
+            next_id = _normalise_id(next_challenge.get("id")) if next_challenge else None
+
+            if next_challenge is not None and next_id not in visited_ids:
+                stack.append(next_challenge)
+
+    return list(terminals.values())
 
 
 def _issue(
     *,
     visualization: Mapping[str, Any],
     reachable_challenge: Mapping[str, Any],
-    active_wave_ids: set[Any],
+    active_wave_ids: set[str],
     initial_challenge: Mapping[str, Any],
-    visualizations: Mapping[Any, dict[str, Any]],
+    visualizations: Mapping[str, dict[str, Any]],
 ) -> Issue:
-    wave_id = _clean_scalar(visualization.get("wave"))
+    wave_id = _normalise_id(visualization.get("wave"))
 
     description = (
-        "Reachable Challenge from some initial level is not in same visualization or not with same label:\n"
+        "Reachable challenge from an initial level is not in the same visualization "
+        "or does not have the same label:\n"
         f"Initial challenge = {_challenge_ref(initial_challenge)}; "
         f"reachable challenge = {_challenge_ref(reachable_challenge)}\n"
-        f"Initial challenge visualization = "
+        f"Initial challenge visualization(s) = "
         f"'{_visualization_ref(initial_challenge.get('visualizations'), visualizations)}'; "
-        f"reachable challenge visualization = "
+        f"reachable challenge visualization(s) = "
         f"'{_visualization_ref(reachable_challenge.get('visualizations'), visualizations)}'\n"
         f"Initial challenge labels = '{initial_challenge.get('labels')}'; "
         f"reachable challenge labels = '{reachable_challenge.get('labels')}'\n"
@@ -138,9 +159,9 @@ def _issue(
         check=VISUALIZATIONINTERN,
         severity="medium",
         active_wave=wave_id in active_wave_ids if wave_id is not None else False,
-        visualization_id=_clean_scalar(visualization.get("id")),
+        visualization_id=_normalise_id(visualization.get("id")),
         visualization=str(_clean_scalar(visualization.get("description")) or ""),
-        challenge_id=_clean_scalar(reachable_challenge.get("id")),
+        challenge_id=_normalise_id(reachable_challenge.get("id")),
         challenge=str(_clean_scalar(reachable_challenge.get("name")) or ""),
         wave_id=wave_id,
         message=description,
@@ -161,36 +182,68 @@ def run_native_visualizationintern_tables(
     active_wave_ids = _active_wave_ids(waves_df, now=now)
 
     issues: list[Issue] = []
-    seen_pairs: set[tuple[Any, Any]] = set()
+    notes: list[str] = []
+    seen_pairs: set[tuple[str | None, str | None, str | None]] = set()
+    memberships_evaluated = 0
 
     for _, vis_row in visualizations_df.iterrows():
-        vis = vis_row.to_dict()
-        vis_id = vis["id"]
+        visualization = vis_row.to_dict()
+        vis_id = _normalise_id(visualization.get("id"))
 
-        vis_challenges = [
-            c for c in challenges.values()
-            if c.get("visualizations") == vis_id
+        if vis_id is None:
+            continue
+
+        vis_challenges = _challenges_for_visualization(challenges, vis_id)
+        memberships_evaluated += len(vis_challenges)
+
+        flow_kind = _classify_visualization_flow(
+            visualization,
+            vis_challenges,
+            challenges,
+        )
+
+        # This check is meaningful for level-progressions. Cyclic/support
+        # visualizations such as Tips/Info/Support should not be forced into
+        # progression-terminal assumptions.
+        if flow_kind != VisualizationFlowKind.PROGRESSION:
+            continue
+
+        initial_challenges = [
+            challenge
+            for challenge in vis_challenges
+            if _is_initial(challenge)
         ]
-        initial_challenges = [c for c in vis_challenges if _is_initial(c)]
 
         for initial in initial_challenges:
             reachable_terminals = _reachable_terminal_challenges(initial, challenges)
 
             for reachable in reachable_terminals:
-                same_visualization = initial.get("visualizations") == reachable.get("visualizations")
-                same_label = _labels_equal(initial.get("labels"), reachable.get("labels"))
+                same_visualization = _challenge_belongs_to_visualization(
+                    reachable,
+                    vis_id,
+                )
+                same_label = _labels_equal(
+                    initial.get("labels"),
+                    reachable.get("labels"),
+                )
 
                 if same_visualization and same_label:
                     continue
 
-                key = (initial.get("id"), reachable.get("id"))
+                key = (
+                    vis_id,
+                    _normalise_id(initial.get("id")),
+                    _normalise_id(reachable.get("id")),
+                )
+
                 if key in seen_pairs:
                     continue
+
                 seen_pairs.add(key)
 
                 issues.append(
                     _issue(
-                        visualization=vis,
+                        visualization=visualization,
                         reachable_challenge=reachable,
                         active_wave_ids=active_wave_ids,
                         initial_challenge=initial,
@@ -198,12 +251,22 @@ def run_native_visualizationintern_tables(
                     )
                 )
 
+    coverage_problem = _coverage_note(
+        check_name="Visualization internals",
+        memberships=memberships_evaluated,
+        challenge_count=len(challenges_df),
+        visualization_count=len(visualizations_df),
+    )
+
+    if coverage_problem:
+        notes.append(coverage_problem)
+
     issues.sort(key=lambda item: (item.active_wave, item.challenge_id), reverse=True)
 
     return {
-        "status": "Failed" if issues else "Passed",
+        "status": "Error" if coverage_problem else "Failed" if issues else "Passed",
         "issues": issues,
-        "notes": [],
+        "notes": notes,
     }
 
 

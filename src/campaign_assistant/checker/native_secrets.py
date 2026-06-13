@@ -12,8 +12,10 @@ from campaign_assistant.checker.table_utils import (
     _active_wave_ids,
     _challenge_index,
     _challenge_url,
+    _challenge_visualizations,
     _clean_scalar,
     _get_table,
+    _normalise_id,
     _visualization_index,
 )
 
@@ -30,21 +32,33 @@ def load_secrets_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
     }
 
 
+def _first_existing_visualization(
+    challenge: Mapping[str, Any],
+    visualizations: Mapping[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    for visualization_id in _challenge_visualizations(challenge):
+        visualization = visualizations.get(visualization_id)
+        if visualization is not None:
+            return visualization
+    return None
+
+
 def _issue(
     *,
     challenge: Mapping[str, Any],
     visualization: Mapping[str, Any],
-    active_wave_ids: set[Any],
+    active_wave_ids: set[str],
     message: str,
 ) -> Issue:
-    wave_id = _clean_scalar(visualization.get("wave"))
+    wave_id = _normalise_id(visualization.get("wave"))
+
     return Issue(
         check=SECRETS,
         severity="medium",
         active_wave=wave_id in active_wave_ids if wave_id is not None else False,
-        visualization_id=_clean_scalar(visualization.get("id")),
+        visualization_id=_normalise_id(visualization.get("id")),
         visualization=str(_clean_scalar(visualization.get("description")) or ""),
-        challenge_id=_clean_scalar(challenge.get("id")),
+        challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
         message=message,
@@ -60,8 +74,7 @@ def split_triple(triple: str) -> list[str]:
 
 
 def parse_conditions_into_triples(value: Any) -> list[list[str]]:
-    if isinstance(value, float):
-        return []
+    value = _clean_scalar(value)
     if value is None:
         return []
 
@@ -73,16 +86,19 @@ def condition_triples_find_secret(triples: list[list[str]]) -> str | None:
     for triple in triples:
         if len(triple) < 3:
             continue
+
         left = str(triple[0]).strip()
         op = str(triple[1]).strip()
+
         if left == "SECRET" and op == "EQUAL":
             return str(triple[2]).strip()
+
     return None
 
 
 def _proposed_secret_from_task_name(task_name: Any) -> str:
     return (
-        str(task_name)
+        str(_clean_scalar(task_name) or "")
         .replace(" ", "-")
         .replace("ü", "ue")
         .replace("ä", "ae")
@@ -113,7 +129,7 @@ def run_native_secrets_tables(
     for row_idx, task_row in tasks_df.iterrows():
         task = task_row.to_dict()
 
-        if task.get("dataproviders") != GAMEBUS_STUDIO:
+        if _clean_scalar(task.get("dataproviders")) != GAMEBUS_STUDIO:
             continue
 
         secret = condition_triples_find_secret(
@@ -124,19 +140,21 @@ def run_native_secrets_tables(
             secretchecks.setdefault(secret, []).append(task)
             continue
 
-        challenge = challenges.get(task.get("challenge"))
+        challenge = challenges.get(_normalise_id(task.get("challenge")) or "")
         if challenge is None:
             continue
 
-        visualization = visualizations.get(challenge.get("visualizations"))
+        visualization = _first_existing_visualization(challenge, visualizations)
         if visualization is None:
             continue
 
-        news = _proposed_secret_from_task_name(task.get("name"))
+        task_name = _clean_scalar(task.get("name")) or ""
+        news = _proposed_secret_from_task_name(task_name)
         proposedsecret = f"[SECRET, EQUAL, {news}]"
 
-        if isinstance(task.get("conditions"), str):
-            proposedsecret = f"{proposedsecret}, {task['conditions']}"
+        conditions = _clean_scalar(task.get("conditions"))
+        if isinstance(conditions, str) and conditions.strip():
+            proposedsecret = f"{proposedsecret}, {conditions}"
 
         issues.append(
             _issue(
@@ -144,9 +162,9 @@ def run_native_secrets_tables(
                 visualization=visualization,
                 active_wave_ids=active_wave_ids,
                 message=(
-                    f"Task '{task['name']}' has no secret. "
+                    f"Task '{task_name}' has no secret. "
                     f"Proposing {proposedsecret} at column 'conditions' "
-                    f"in row={row_idx} (name={task['name']})"
+                    f"in row={row_idx + 2} (name={task_name})"
                 ),
             )
         )
@@ -156,23 +174,31 @@ def run_native_secrets_tables(
             continue
 
         first = tasks[0]
-        first_name = first.get("name")
-        all_same_name = all(task.get("name") == first_name for task in tasks[1:])
+        first_name = _clean_scalar(first.get("name"))
+
+        all_same_name = all(
+            _clean_scalar(task.get("name")) == first_name
+            for task in tasks[1:]
+        )
 
         if all_same_name:
             continue
 
-        challenge_ids = [task.get("challenge") for task in tasks]
+        challenge_ids = [
+            _normalise_id(task.get("challenge"))
+            for task in tasks
+        ]
+
         challenge_refs = [
-            f"{cid} ({challenges.get(cid, {}).get('name', '')})"
+            f"{cid} ({_clean_scalar(challenges.get(cid or '', {}).get('name')) or ''})"
             for cid in challenge_ids
         ]
 
-        challenge = challenges.get(first.get("challenge"))
+        challenge = challenges.get(_normalise_id(first.get("challenge")) or "")
         if challenge is None:
             continue
 
-        visualization = visualizations.get(challenge.get("visualizations"))
+        visualization = _first_existing_visualization(challenge, visualizations)
         if visualization is None:
             continue
 
@@ -183,7 +209,7 @@ def run_native_secrets_tables(
                 active_wave_ids=active_wave_ids,
                 message=(
                     f"Task '{first_name}' has copies with the same secret '{secret}', "
-                    f"but that have different names (see challenges {challenge_refs})"
+                    f"but they have different names (see challenges {challenge_refs})"
                 ),
             )
         )

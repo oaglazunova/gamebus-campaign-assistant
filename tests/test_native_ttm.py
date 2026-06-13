@@ -103,7 +103,7 @@ def test_ttm_reports_wrong_failure_in_first_four_levels() -> None:
     assert issue.check == TTMSTRUCTURE
     assert issue.severity == "medium"
     assert issue.active_wave is True
-    assert issue.challenge_id == 1
+    assert issue.challenge_id == "1"
     assert "failure transition should point to itself" in issue.message
     assert "1 (Level 1)" in issue.message
     assert "2 (Level 2)" in issue.message
