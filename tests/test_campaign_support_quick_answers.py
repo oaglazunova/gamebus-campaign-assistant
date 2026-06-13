@@ -81,24 +81,63 @@ def test_summarize_issues_is_deterministic_and_concise(minimal_analysis_result: 
     assert "Total issues: **2**" in answer
     assert "reachability" in answer
     assert "secrets" in answer
-    assert "First item to inspect" in answer
+    assert "First items to inspect" in answer
     assert "Terminal Challenge not reachable from any initial challenge" in answer
     assert "LLM support is not available" not in answer
     assert "Top findings to inspect" not in answer
 
 
-def test_highest_priority_finding_answer_is_deterministic(minimal_analysis_result: dict) -> None:
+def test_explain_top_findings_quick_action_is_deterministic(
+    minimal_analysis_result: dict,
+) -> None:
     context = build_llm_context(_result_with_two_findings(minimal_analysis_result))
     agent = CampaignSupportAgent(llm_client=FailingLLM())
 
-    answer = agent.run(question="Explain the highest-priority finding", context=context)
+    answer = agent.run_quick_action(
+        quick_action="explain_top_findings",
+        context=context,
+    )
 
-    assert "Highest-priority finding" in answer
+    assert "Highest-priority finding types" in answer
     assert "Terminal Challenge not reachable from any initial challenge" in answer
-    assert "Connect this terminal level to an initial success path" in answer
-    assert "Next level when target is met on time" in answer
-    assert "Task has copies with the same secret" not in answer
-    assert "LLM support is not available" not in answer
+    assert "Check:" in answer
+    assert "Severity:" in answer
+    assert "What this means:" in answer
+    assert "Why it matters:" in answer
+
+
+def test_explain_top_findings_collapses_duplicate_issue_types(
+    minimal_analysis_result: dict,
+) -> None:
+    result = _result_with_two_findings(minimal_analysis_result)
+    findings = result["prioritized_issues"]
+
+    duplicate = dict(findings[0])
+    duplicate["challenge"] = "Another challenge with the same issue"
+    duplicate["challenge_id"] = 99999
+
+    context = {
+        "top_findings": [
+            findings[0],
+            duplicate,
+            findings[1],
+        ]
+    }
+
+    agent = CampaignSupportAgent(llm_client=FailingLLM())
+
+    answer = agent.run_quick_action(
+        quick_action="explain_top_findings",
+        context=context,
+    )
+
+    # The repeated reachability issue type should be explained once.
+    assert answer.count("Terminal Challenge not reachable from any initial challenge") == 1
+    assert "Repeated in top findings" in answer
+    assert "2 similar findings of this issue type" in answer
+
+    # The second distinct issue type should still be explained.
+    assert "Task has copies with the same secret but different names" in answer
 
 
 def test_campaign_structure_answer_is_deterministic(minimal_analysis_result: dict) -> None:
@@ -141,11 +180,86 @@ def test_prioritization_question_is_deterministic(minimal_analysis_result: dict)
     assert "LLM support is not available" not in answer
 
 
-def test_weak_llm_answer_is_replaced_with_deterministic_fallback(minimal_analysis_result: dict) -> None:
+def test_weak_llm_answer_is_not_used_for_explicit_overview(
+    minimal_analysis_result: dict,
+) -> None:
     context = build_llm_context(_result_with_two_findings(minimal_analysis_result))
     agent = CampaignSupportAgent(llm_client=WeakLLM())
 
     answer = agent.run(question="Give me an overview", context=context)
 
     assert answer != "Okay"
-    assert "The selected checks found" in answer
+    assert "Summary of issues" in answer
+    assert "Total issues: **2**" in answer
+    assert "First items to inspect" in answer
+
+
+def test_explain_top_findings_collapses_secret_issues_with_different_task_names(
+    minimal_analysis_result: dict,
+) -> None:
+    result = _result_with_two_findings(minimal_analysis_result)
+    reachability_finding = result["prioritized_issues"][0]
+    secret_finding = result["prioritized_issues"][1]
+
+    first_secret = dict(secret_finding)
+    first_secret["title"] = "Task '100 % Vollkorn-Menü!' has copies with same secret but different names"
+    first_secret["message"] = first_secret["title"]
+    first_secret["challenge"] = "Nutrition challenge A"
+
+    second_secret = dict(secret_finding)
+    second_secret["title"] = "Task 'Abendroutine Plannen' has copies with same secret but different names"
+    second_secret["message"] = second_secret["title"]
+    second_secret["challenge"] = "Nutrition challenge B"
+    second_secret["challenge_id"] = 100
+
+    context = {
+        "top_findings": [
+            first_secret,
+            second_secret,
+            reachability_finding,
+        ]
+    }
+
+    agent = CampaignSupportAgent(llm_client=FailingLLM())
+
+    answer = agent.run_quick_action(
+        quick_action="explain_top_findings",
+        context=context,
+    )
+
+    assert answer.count("Task secret reused with different task names") == 1
+    assert "Repeated in top findings" in answer
+    assert "2 similar findings of this issue type" in answer
+    assert "Task '100 % Vollkorn-Menü!'" in answer
+    assert "Challenge not reachable from the configured progression" in answer
+
+
+def test_mixed_priority_reason_and_fix_question_combines_answers(
+    minimal_analysis_result: dict,
+) -> None:
+    result = _result_with_two_findings(minimal_analysis_result)
+    finding = dict(result["prioritized_issues"][0])
+    finding["deterministic_gamebus_fix_guidance"] = (
+        "Connect this terminal level to an initial success path."
+    )
+
+    context = {
+        "analysis": {
+            "total_issues": 1,
+            "severity_counts": {"high": 1},
+        },
+        "top_findings": [finding],
+    }
+
+    agent = CampaignSupportAgent(llm_client=FailingLLM())
+
+    answer = agent.run(
+        question="Why do I need to inspect this first and how do I fix it?",
+        context=context,
+    )
+
+    assert "ordered by the deterministic priority score" in answer
+    assert "Use the deterministic GameBus Studio guidance" in answer
+    assert "Connect this terminal level to an initial success path" in answer
+    assert "LLM support is not available" not in answer
+    

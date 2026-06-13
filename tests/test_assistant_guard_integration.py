@@ -36,7 +36,7 @@ def test_prepared_secrets_finding_is_explained_without_unrelated_checks(
     }
 
     question = (
-        "Explain this campaign finding and suggest what I should inspect next.\n\n"
+        "Explain this campaign finding.\n\n"
         "Check: secrets Severity: medium Finding: Task 'Example task' has copies "
         "with the same secret 'example-secret', but that have different names "
         "(see challenges ['1 (Level A)', '2 (Level B)']) "

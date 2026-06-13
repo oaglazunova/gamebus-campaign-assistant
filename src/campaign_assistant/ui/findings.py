@@ -127,7 +127,7 @@ def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
     check = str(issue.get("check") or "unknown")
 
     parts = [
-        "Explain this campaign finding and suggest what I should inspect next.",
+        "Explain this campaign finding.",
         "",
         f"Check: {check}",
         f"Severity: {severity}",
@@ -158,9 +158,17 @@ def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
 
 
 def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
+    focused_finding = dict(issue)
+
+    fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+    if fix_guidance:
+        focused_finding["deterministic_gamebus_fix_guidance"] = fix_guidance
+
+    st.session_state["assistant_focused_finding"] = focused_finding
     st.session_state["assistant_prefill_prompt"] = _assistant_prompt_for_issue(issue)
     st.session_state["assistant_notice"] = (
-        "This question was prepared from a finding."
+        "This question was prepared from a finding. Follow-up questions such as "
+        "`How do I fix this?` will refer to this selected finding."
     )
 
     st.session_state["requested_workflow_page"] = "Assistant"
@@ -169,6 +177,8 @@ def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
         st.query_params["page"] = "assistant"
     except Exception:
         pass
+
+
 
 
 def _severity_badge(severity: str) -> str:

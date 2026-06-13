@@ -176,12 +176,12 @@ def explain_prepared_finding(question: str) -> str | None:
 
     if guidance:
         lines.append("")
-        lines.append("**What to inspect next:**")
+        lines.append("**What to do next:**")
         lines.append("")
         lines.append(guidance)
     else:
         lines.append("")
-        lines.append("**What to inspect next:**")
+        lines.append("**What to do next:**")
         lines.append(
             "Use the finding details above to open the relevant campaign element in GameBus Studio, "
             "then inspect the fields mentioned by the checker."

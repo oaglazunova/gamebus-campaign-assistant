@@ -27,6 +27,14 @@ def _show_routing_footer() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
+def quick_action_focuses_top_finding(action: str | None) -> bool:
+    return action in {
+        "inspect_first",
+        "explain_top_finding",
+        "explain_top_findings",
+    }
+
+
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
     return dict(result.get("summary", {}) or {})
 
@@ -139,6 +147,27 @@ def _format_top_issues(result: dict[str, Any], limit: int = 5) -> str:
     return "\n".join(lines)
 
 
+def focused_finding_for_quick_action(
+    result: dict[str, Any],
+    quick_action: str | None,
+) -> dict[str, Any] | None:
+    if not quick_action_focuses_top_finding(quick_action):
+        return None
+
+    context = build_llm_context(result)
+    top_findings = context.get("top_findings", []) or []
+
+    if not top_findings:
+        return None
+
+    first = top_findings[0]
+    if not isinstance(first, dict):
+        return None
+
+    return dict(first)
+
+
+
 def render_assistant_page_status(result: dict[str, Any], message_count: int) -> None:
     total = _total_issues(result)
     checks_run = result.get("checks_run", []) or []
@@ -209,31 +238,32 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
         return
 
     suggestions = [
-        "Summarize the issues",
-        "What is the campaign structure?",
-        "What should I inspect first?",
-        "Explain the highest-priority finding",
-        "How is prioritization calculated?",
-        "How theory-grounded is this campaign?",
+        ("Summarize the issues", "summarize_issues"),
+        ("What is the campaign structure?", "campaign_structure"),
+        ("What should I inspect first?", "inspect_first"),
+        ("Explain the highest-priority findings", "explain_top_findings"),
+        ("How is prioritization calculated?", "prioritization"),
+        ("How theory-grounded is this campaign?", "theory_grounding"),
     ]
 
     if _total_issues(result) == 0:
         suggestions = [
-            "Summarize the analysis",
-            "What is the campaign structure?",
-            "Which checks were run?",
-            "What does a clean result mean?",
-            "How is prioritization calculated?",
-            "How theory-grounded is this campaign?",
+            ("Summarize the analysis", "summarize_issues"),
+            ("What is the campaign structure?", "campaign_structure"),
+            ("Which checks were run?", "all_checks"),
+            ("What does a clean result mean?", "clean_result"),
+            ("How is prioritization calculated?", "prioritization"),
+            ("How theory-grounded is this campaign?", "theory_grounding"),
         ]
 
     st.caption("Quick questions")
 
     cols = st.columns(min(len(suggestions), 4))
-    for idx, suggestion in enumerate(suggestions):
+    for idx, (label, action) in enumerate(suggestions):
         with cols[idx % len(cols)]:
-            if st.button(suggestion, key=f"assistant-suggestion-{idx}", use_container_width=True):
-                st.session_state["assistant_pending_question"] = suggestion
+            if st.button(label, key=f"assistant-suggestion-{idx}", use_container_width=True):
+                st.session_state["assistant_pending_question"] = label
+                st.session_state["assistant_pending_quick_action"] = action
                 st.rerun()
 
 
@@ -283,7 +313,14 @@ def render_prepared_question_panel() -> None:
 
 
 
-def answer_question(user_question: str, result: dict[str, Any]) -> str:
+def answer_question(
+    user_question: str,
+    result: dict[str, Any],
+    *,
+    conversation_history: list[dict[str, str]] | None = None,
+    quick_action: str | None = None,
+    focused_finding: dict[str, Any] | None = None,
+) -> str:
     if not result:
         return (
             "No campaign has been analyzed yet. Analyze a campaign first, "
@@ -302,6 +339,17 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
         response = coordinator.answer(
             question=user_question,
             result=result,
+            conversation_history=(
+                conversation_history
+                if conversation_history is not None
+                else list(st.session_state.get("messages", []))
+            ),
+            quick_action=quick_action,
+            focused_finding=(
+                focused_finding
+                if focused_finding is not None
+                else st.session_state.get("assistant_focused_finding")
+            ),
         )
 
         if not _show_routing_footer():
@@ -313,9 +361,10 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
             guard_note = f" Response guard applied: `{response.guard_reason}`."
 
         return (
-                response.text
-                + "\n\n---\n"
-                + f"_Assistant route: `{response.intent}` via **{friendly_agent}**.{guard_note}_"
+            response.text
+            + "\n\n---\n"
+            + f"_Assistant route: `{response.intent}` via **{friendly_agent}**. "
+            + f"Source: `{response.answer_source}`.{guard_note}_"
         )
 
     except Exception as exc:
@@ -323,4 +372,3 @@ def answer_question(user_question: str, result: dict[str, Any]) -> str:
             "The assistant could not process this question because an internal error occurred.\n\n"
             f"Error: `{exc}`"
         )
-

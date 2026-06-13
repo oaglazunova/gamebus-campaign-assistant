@@ -62,6 +62,16 @@ _UNSUPPORTED_THEORY_CLAIM_PATTERNS = [
 
 
 
+def uncertainty_response(question: str) -> str:
+    return (
+        "I’m not sure from the available campaign data. "
+        "The current checker context does not contain enough information to answer this confidently.\n\n"
+        "Try asking a more specific question, for example:\n"
+        "- `Explain the first finding in simple terms.`\n"
+        "- `What should I inspect first?`\n"
+        "- `How do I fix the secrets findings?`\n"
+        "- `How can I make this campaign more TTM-aligned?`"
+    )
 
 def _lower(text: str) -> str:
     return " ".join(str(text or "").lower().split())

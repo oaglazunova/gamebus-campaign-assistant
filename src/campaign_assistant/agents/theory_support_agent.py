@@ -15,9 +15,21 @@ from campaign_assistant.agents.question_types import (
     is_ttm_question,
     mentions_specific_theory,
 )
+from campaign_assistant.agents.response_guard import uncertainty_response
 
 
-THEORY_SUPPORT_SYSTEM_PROMPT = """
+THEORY_UNCERTAINTY_RULES = """
+Uncertainty rules:
+- This is advisory theory-oriented feedback, not formal validation.
+- Do not claim that a campaign is theory-aligned unless the provided context explicitly supports it.
+- If the export does not show enough information, say:
+  "I’m not sure from the available campaign export."
+- Explain what extra information would be needed, such as task rationale, feedback text, participant choices, stage logic, or intervention mapping.
+- Then suggest a better follow-up question.
+"""
+
+
+THEORY_SUPPORT_SYSTEM_PROMPT = f"""
 You are the Theory Support Agent for the GameBus Campaign Assistant.
 
 Your role:
@@ -38,6 +50,8 @@ Required framing:
 - Start theory-alignment answers by saying: "This is advisory theory-oriented feedback, not formal validation."
 - Use cautious wording such as "appears to", "may support", "could be strengthened by", "the export suggests".
 - Keep answers practical and concise.
+
+{THEORY_UNCERTAINTY_RULES}
 """
 
 
@@ -59,10 +73,6 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
         "To enable richer advisory theory support, start Ollama and configure the selected model."
     )
 
-
-def _counts_from_context(context: dict[str, Any]) -> dict[str, Any]:
-    structure = context.get("campaign_structure", {}) or {}
-    return structure.get("counts", {}) or {}
 
 
 def _is_weak_llm_answer(text: str) -> bool:
@@ -99,6 +109,32 @@ def _is_weak_llm_answer(text: str) -> bool:
     if normalized in weak_prefixes:
         return True
 
+    if normalized in weak_prefixes:
+        return True
+
+    weak_phrases = [
+        "i'm ready to help",
+        "i am ready to help",
+        "i'm here to help",
+        "i am here to help",
+        "please provide",
+        "provide the campaign",
+        "provide more details",
+        "i don't see a specific question",
+        "i do not see a specific question",
+        "no specific question was asked",
+        "unfortunately, i don't see",
+        "unfortunately, i do not see",
+        "i need more information before",
+        "i would need more information before",
+    ]
+
+    if any(phrase in normalized for phrase in weak_phrases):
+        return True
+
+    # Catches short non-answers such as "Okay, understood" but not "Mock answer".
+    tokens = normalized.split()
+
     # Catches short non-answers such as "Okay, understood" but not "Mock answer".
     tokens = normalized.split()
     if len(tokens) <= 3 and all(token in weak_exact for token in tokens):
@@ -111,162 +147,19 @@ def _normalized(question: str) -> str:
     return " ".join(str(question or "").lower().strip().split())
 
 
-def _normalized(question: str) -> str:
-    return " ".join(str(question or "").lower().strip().split())
+def _format_conversation_history(history: list[dict[str, str]] | None) -> str:
+    if not history:
+        return "No previous conversation messages are available."
 
+    recent = history[-6:]
+    lines = []
+    for item in recent:
+        role = item.get("role", "unknown")
+        content = str(item.get("content", "")).strip()
+        if content:
+            lines.append(f"{role}: {content}")
 
-def _is_improvement_question(question: str) -> bool:
-    normalized = _normalized(question)
-
-    return any(
-        phrase in normalized
-        for phrase in [
-            "how to make",
-            "how can i make",
-            "how do i make",
-            "make the campaign",
-            "make this campaign",
-            "make it more",
-            "more aligned",
-            "better aligned",
-            "more theory-aligned",
-            "more theory grounded",
-            "more theory-grounded",
-            "improve",
-            "strengthen",
-            "what should i change",
-            "what should i add",
-            "how should i design",
-            "how to design",
-            "what would you change",
-        ]
-    )
-
-
-def _is_ttm_improvement_question(question: str) -> bool:
-    normalized = _normalized(question)
-
-    if not any(
-        term in normalized
-        for term in [
-            "ttm",
-            "transtheoretical",
-            "stage of change",
-            "stages of change",
-        ]
-    ):
-        return False
-
-    return any(
-        phrase in normalized
-        for phrase in [
-            "how to make",
-            "how can i make",
-            "make the campaign",
-            "make this campaign",
-            "make it",
-            "more ttm-aligned",
-            "ttm-aligned",
-            "align with ttm",
-            "aligned with ttm",
-            "make it aligned",
-            "improve",
-            "strengthen",
-            "what should i change",
-            "what should i add",
-            "how should i design",
-        ]
-    )
-
-
-def _com_b_improvement_response(context: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            "This is advisory theory-oriented feedback, not formal validation.",
-            "",
-            "To make the campaign more COM-B-aligned, I would explicitly design each task around capability, opportunity, and motivation.",
-            "",
-            "Recommended design changes:",
-            "",
-            "1. **Define the target behaviour clearly**",
-            "For each task, specify what behaviour the participant should perform, for example walking, meal planning, sleep preparation, food logging, or reflection.",
-            "",
-            "2. **Check Capability**",
-            "Add support for knowledge, skills, and confidence. Examples: short explanations, examples, tutorials, simple first steps, or reflection tasks that help users understand what to do.",
-            "",
-            "3. **Check Opportunity**",
-            "Address practical and social barriers. Examples: low-effort alternatives, reminders, environmental prompts, social support, or tasks that help users plan around time, weather, family, or work constraints.",
-            "",
-            "4. **Check Motivation**",
-            "Support intention, positive reinforcement, habit formation, and personal relevance. Examples: progress feedback, meaningful goals, reflection on benefits, streaks used carefully, and supportive rewards.",
-            "",
-            "5. **Avoid relying on points alone**",
-            "Points and levels can support motivation, but they do not by themselves address capability or opportunity. Make sure the campaign also helps users understand, plan, and perform the behaviour.",
-            "",
-            "6. **Create a COM-B mapping table**",
-            "Use columns such as: task/level, target behaviour, Capability support, Opportunity support, Motivation support, missing support, and proposed change.",
-        ]
-    )
-
-
-def _sdt_improvement_response(context: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            "This is advisory theory-oriented feedback, not formal validation.",
-            "",
-            "To make the campaign more Self-Determination Theory-aligned, I would check whether the design supports autonomy, competence, and relatedness without making the gamification feel controlling.",
-            "",
-            "Recommended design changes:",
-            "",
-            "1. **Strengthen autonomy**",
-            "Give users meaningful choices where possible: choice of task, timing, difficulty, goal, or reflection topic. Avoid language that sounds pressuring, guilt-based, or controlling.",
-            "",
-            "2. **Strengthen competence**",
-            "Make tasks achievable, give clear instructions, show progress, and help users experience mastery. Difficulty should increase gradually rather than suddenly.",
-            "",
-            "3. **Strengthen relatedness**",
-            "Use social or team elements to create support and recognition, not shame or pressure. If the campaign has teams, feedback should feel encouraging rather than competitive in a harmful way.",
-            "",
-            "4. **Review rewards carefully**",
-            "Points, badges, and levels should support meaningful progress. If rewards feel like the only reason to act, they may undermine autonomous motivation.",
-            "",
-            "5. **Improve feedback tone**",
-            "Feedback should explain why a task matters, acknowledge effort, and support user choice. Avoid feedback that implies failure, blame, or obedience.",
-            "",
-            "6. **Create an SDT mapping table**",
-            "Use columns such as: task/level, autonomy support, competence support, relatedness support, potentially controlling elements, and proposed change.",
-        ]
-    )
-
-
-def _bct_improvement_response(context: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            "This is advisory theory-oriented feedback, not formal validation.",
-            "",
-            "To make the campaign more BCT-grounded, I would explicitly select which behaviour-change techniques each task is meant to implement instead of trying to infer them afterwards.",
-            "",
-            "Recommended design changes:",
-            "",
-            "1. **Define the target behaviour for each task**",
-            "A BCT is only meaningful if it is linked to a clear behaviour, such as walking, logging meals, reducing screen time, preparing food, or reflecting on sleep habits.",
-            "",
-            "2. **Choose a small set of intended BCTs**",
-            "Useful candidates may include goal setting, action planning, self-monitoring, feedback, prompts/cues, graded tasks, problem solving, social support, and rewards.",
-            "",
-            "3. **Operationalise each BCT visibly**",
-            "Do not only label a task as a BCT. Make sure the task actually contains the mechanism. For example, action planning should ask when, where, and how the behaviour will be done.",
-            "",
-            "4. **Check whether rewards match meaningful behaviour**",
-            "Points should reward relevant behaviour or useful preparation, not only clicking through tasks.",
-            "",
-            "5. **Avoid over-coding**",
-            "Do not claim too many BCTs for one task unless the content clearly supports them. A smaller, well-justified set is more credible.",
-            "",
-            "6. **Create a BCT mapping table**",
-            "Use columns such as: task/level, target behaviour, intended BCT, evidence in task text, missing content, and proposed rewrite.",
-        ]
-    )
+    return "\n".join(lines) if lines else "No previous conversation messages are available."
 
 
 def _outcome_safe_response(context: dict[str, Any]) -> str:
@@ -345,40 +238,111 @@ def _ttm_safe_response(context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _ttm_improvement_response(context: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            "This is advisory theory-oriented feedback, not formal validation.",
-            "",
-            "To make the campaign more TTM-aligned, I would make the stage logic explicit rather than relying on waves, levels, or points alone.",
-            "",
-            "Recommended design changes:",
-            "",
-            "1. **Define the intended stage for each task or level**",
-            "Map campaign content to precontemplation, contemplation, preparation, action, and maintenance. This makes it clear which part of behaviour change each task is meant to support.",
-            "",
-            "2. **Make task content stage-specific**",
-            "- Precontemplation: awareness, reflection, perceived relevance, risks/benefits.",
-            "- Contemplation: pros/cons, personal motivation, barriers, ambivalence.",
-            "- Preparation: planning, goal setting, implementation intentions, choosing first steps.",
-            "- Action: concrete behaviour performance, self-monitoring, feedback, reinforcement.",
-            "- Maintenance: habit support, relapse prevention, coping plans, long-term identity support.",
-            "",
-            "3. **Add readiness-based progression logic**",
-            "Progression should reflect readiness or behavioural evidence, not only task completion or points. For example, users could move from preparation to action after completing planning tasks or recording an initial behaviour.",
-            "",
-            "4. **Add relapse/recycling paths**",
-            "TTM assumes that people may move backwards as well as forwards. The campaign should support returning to an earlier stage without framing it as failure.",
-            "",
-            "5. **Adapt feedback to the user’s stage**",
-            "Early-stage feedback should be reflective and non-controlling. Later-stage feedback can be more action-oriented, reinforcing, and focused on maintaining progress.",
-            "",
-            "6. **Document the theory mapping**",
-            "Create a simple design table with columns such as: task/level, intended TTM stage, target behaviour, intended mechanism, feedback type, and progression rule.",
-            "",
-            "A practical next step is to review the current tasks and assign each one to a TTM stage. Tasks that do not clearly fit a stage may need rewriting, moving, or additional feedback logic.",
-        ]
-    )
+def _mentioned_ttm_stages(question: str) -> list[str]:
+    normalized = _normalized(question)
+
+    stage_aliases = {
+        "precontemplation": [
+            "precontemplation",
+            "pre-contemplation",
+            "not ready",
+        ],
+        "contemplation": [
+            "contemplation",
+            "thinking about change",
+        ],
+        "preparation": [
+            "preparation",
+            "prepare",
+            "preparing",
+        ],
+        "action": [
+            "action",
+            "acting",
+        ],
+        "maintenance": [
+            "maintenance",
+            "maintain",
+            "sustain",
+            "sustaining",
+        ],
+        "relapse/recycling": [
+            "relapse",
+            "recycling",
+            "fallback",
+            "fall back",
+        ],
+    }
+
+    mentioned = []
+    for stage, aliases in stage_aliases.items():
+        if any(alias in normalized for alias in aliases):
+            mentioned.append(stage)
+
+    return mentioned
+
+
+def _is_user_provided_ttm_mapping(question: str) -> bool:
+    normalized = _normalized(question)
+    stages = _mentioned_ttm_stages(question)
+
+    progression_words = [
+        "level",
+        "levels",
+        "wave",
+        "waves",
+        "first",
+        "next",
+        "then",
+        "final",
+        "last",
+        "after",
+        "before",
+        "progression",
+        "stage",
+        "stages",
+    ]
+
+    has_progression_language = any(word in normalized for word in progression_words)
+
+    # Avoid treating any random use of "action" as TTM mapping.
+    return len(stages) >= 2 and has_progression_language
+
+
+def _ttm_user_provided_mapping_response(question: str, context: dict[str, Any]) -> str:
+    stages = _mentioned_ttm_stages(question)
+
+    if stages:
+        stage_text = " → ".join(stages)
+    else:
+        stage_text = "the stages you described"
+
+    lines = [
+        "This is advisory theory-oriented feedback, not formal validation.",
+        "",
+        "Using your message as **user-provided design context**, the campaign appears to have an intended TTM-like progression:",
+        "",
+        f"- {stage_text}",
+        "",
+        "That is more informative than the campaign export alone. The export can show levels, tasks, and transitions, but it usually does not prove why those levels exist or which theory stage they are intended to support.",
+        "",
+        "What this suggests:",
+        "- The campaign may be using staged progression rather than a flat list of tasks.",
+        "- Preparation-oriented levels may help users plan or get ready before behaviour change.",
+        "- Action-oriented levels may support actually performing the target behaviour.",
+        "- Maintenance-oriented levels may support sustaining the behaviour over time.",
+        "",
+        "What still needs checking:",
+        "- Are precontemplation and contemplation intentionally out of scope, or are they missing?",
+        "- Do the task texts and feedback actually match the intended stage?",
+        "- Are users assessed or routed based on readiness, or does everyone follow the same path?",
+        "- Is there support for relapse/recycling, so users can recover after setbacks?",
+        "- Does the final maintenance part include long-term support, not only a final challenge?",
+        "",
+        "A useful next step is to create a simple mapping table: each level → intended TTM stage → task purpose → feedback/support → transition rule.",
+    ]
+
+    return "\n".join(lines)
 
 
 def _theory_clarification_response() -> str:
@@ -437,6 +401,76 @@ def _sdt_safe_response(context: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _is_improvement_question(question: str) -> bool:
+    normalized = _normalized(question)
+
+    improvement_keywords = [
+        "improve",
+        "strengthen",
+        "enhance",
+        "better",
+        "make",
+        "change",
+        "add",
+        "adapt",
+        "redesign",
+        "align",
+        "aligned",
+        "alignment",
+        "theory-aligned",
+        "theory grounded",
+        "theory-grounded",
+        "grounded in theory",
+        "support",
+    ]
+
+    improvement_phrases = [
+        "how can i make",
+        "how do i make",
+        "how to make",
+        "how can this be",
+        "how should i",
+        "what should i change",
+        "what should i add",
+        "what would you change",
+        "make this campaign",
+        "make the campaign",
+        "make it more",
+        "better aligned",
+        "more aligned",
+        "more ttm-aligned",
+        "more com-b-aligned",
+        "more sdt-aligned",
+        "more bct-grounded",
+    ]
+
+    return (
+        any(keyword in normalized for keyword in improvement_keywords)
+        and any(
+            theory in normalized
+            for theory in [
+                "ttm",
+                "transtheoretical",
+                "stage of change",
+                "stages of change",
+                "com-b",
+                "comb",
+                "capability",
+                "opportunity",
+                "motivation",
+                "sdt",
+                "self-determination",
+                "autonomy",
+                "competence",
+                "relatedness",
+                "bct",
+                "behaviour change technique",
+                "behavior change technique",
+            ]
+        )
+    ) or any(phrase in normalized for phrase in improvement_phrases)
+
+
 class TheorySupportAgent(BaseAgent):
     name = "theory_support_agent"
 
@@ -444,28 +478,87 @@ class TheorySupportAgent(BaseAgent):
         self.llm_client = llm_client
         self.theory_knowledge = load_theory_knowledge_pack()
 
-    def run(self, *, question: str, context: dict[str, Any]) -> str:
+    def run(
+            self,
+            *,
+            question: str,
+            context: dict[str, Any],
+            conversation_history: list[dict[str, str]] | None = None,
+    ) -> str:
         if (
                 is_broad_theory_grounding_question(question)
                 and not mentions_specific_theory(question)
         ):
             return _theory_clarification_response()
 
+        # Keep outcome/effectiveness claims conservative and deterministic.
         if is_outcome_question(question):
             return _outcome_safe_response(context)
 
-        if is_bct_question(question) and _is_improvement_question(question):
-            return _bct_improvement_response(context)
+        # If the user explicitly provides TTM stage mapping, use it as
+        # user-provided design context instead of falling back to the generic TTM answer.
+        if _is_user_provided_ttm_mapping(question):
+            return _ttm_user_provided_mapping_response(question, context)
 
-        if is_ttm_question(question) and _is_improvement_question(question):
-            return _ttm_improvement_response(context)
+        # Short/direct framework questions should be deterministic and safe.
+        if is_bct_question(question) and not _is_improvement_question(question):
+            return _bct_safe_response(context)
 
-        if is_com_b_question(question) and _is_improvement_question(question):
-            return _com_b_improvement_response(context)
+        if is_ttm_question(question) and not _is_improvement_question(question):
+            return _ttm_safe_response(context)
 
-        if is_sdt_question(question) and _is_improvement_question(question):
-            return _sdt_improvement_response(context)
+        if is_com_b_question(question) and not _is_improvement_question(question):
+            return _com_b_safe_response(context)
 
+        if is_sdt_question(question) and not _is_improvement_question(question):
+            return _sdt_safe_response(context)
+
+        # Use the LLM for theory explanation, synthesis, and improvement advice when available.
+        if self.llm_client is not None:
+            context_markdown = format_llm_context_markdown(context)
+
+            conversation_text = _format_conversation_history(conversation_history)
+
+            user_prompt = f"""
+            Recent conversation:
+            {conversation_text}
+
+            Current user question:
+            {question}
+
+            Theory reference pack:
+            {self.theory_knowledge}
+
+            Available campaign/checker context:
+            {context_markdown}
+
+            Answer the current question using only the theory reference pack, recent conversation, and available campaign context.
+
+            Important:
+            - This is advisory theory-oriented feedback, not formal validation.
+            - Do not claim the campaign definitively follows a theory unless the context explicitly shows that.
+            - For questions like "how do I make it TTM/COM-B/SDT/BCT-aligned", give practical design advice.
+            - If the user gave extra design context in the recent conversation, use it cautiously and say that it is user-provided context.
+            - If the export is insufficient, explain what extra design information would be needed.
+            - Do not invent task content, feedback text, participant choices, or stage logic.
+            """
+
+            response = self.llm_client.generate(
+                system_prompt=THEORY_SUPPORT_SYSTEM_PROMPT.strip(),
+                user_prompt=user_prompt.strip(),
+                temperature=0.2,
+            )
+
+            if response.available:
+                answer = response.text.strip()
+
+                if not _is_weak_llm_answer(answer):
+                    required_prefix = "This is advisory theory-oriented feedback, not formal validation."
+                    if required_prefix.lower() not in answer.lower():
+                        answer = required_prefix + "\n\n" + answer
+                    return answer
+
+        # Deterministic theory fallbacks only when LLM is unavailable or weak.
         if is_bct_question(question):
             return _bct_safe_response(context)
 
@@ -478,49 +571,4 @@ class TheorySupportAgent(BaseAgent):
         if is_sdt_question(question):
             return _sdt_safe_response(context)
 
-        if self.llm_client is None:
-            return _fallback_without_llm(question, context)
-
-        context_markdown = format_llm_context_markdown(context)
-
-        user_prompt = f"""
-User question:
-{question}
-
-Theory reference pack:
-{self.theory_knowledge}
-
-Available campaign/checker context:
-{context_markdown}
-
-Answer the user using only the theory reference pack and available campaign context.
-Do not treat this as formal validation. If the context is insufficient, explain what
-additional campaign-design information would be needed.
-"""
-
-        response = self.llm_client.generate(
-            system_prompt=THEORY_SUPPORT_SYSTEM_PROMPT.strip(),
-            user_prompt=user_prompt.strip(),
-            temperature=0.2,
-        )
-
-        if not response.available:
-            return (
-                "This is advisory theory-oriented feedback, not formal validation.\n\n"
-                "LLM support is currently unavailable.\n\n"
-                f"Provider: `{response.provider}`\n"
-                f"Model: `{response.model}`\n"
-                f"Error: {response.error}\n\n"
-                + _fallback_without_llm(question, context)
-            )
-
-        answer = response.text.strip()
-
-        if _is_weak_llm_answer(answer):
-            return _fallback_without_llm(question, context)
-
-        required_prefix = "This is advisory theory-oriented feedback, not formal validation."
-        if required_prefix.lower() not in answer.lower():
-            answer = required_prefix + "\n\n" + answer
-
-        return answer
+        return _fallback_without_llm(question, context)
