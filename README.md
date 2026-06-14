@@ -33,7 +33,7 @@ It is especially useful for people who want a guided interface for running and i
 
 ## Current project status
 
-This version ([0.2.1]) focuses on:
+This version ([0.2.x]) focuses on:
 
 * export-based campaign inspection;
 * clearer presentation of checker results;
