@@ -34,7 +34,7 @@ if exist ".venv" (
     )
 )
 
-echo [3/5] Creating virtual environment with Python 4...
+echo [3/5] Creating virtual environment with Python 3.14...
 py -3.14 -m venv .venv
 if errorlevel 1 (
     echo.

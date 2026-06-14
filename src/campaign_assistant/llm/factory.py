@@ -2,12 +2,14 @@
 
 import os
 
+from campaign_assistant.config import load_local_env
 from campaign_assistant.llm.base import LLMClient
 from campaign_assistant.llm.mock_client import MockLLMClient
 from campaign_assistant.llm.ollama_client import OllamaConfig, OllamaLLMClient
 
 
 def llm_enabled() -> bool:
+    load_local_env()
     value = os.getenv("CAMPAIGN_ASSISTANT_LLM_ENABLED", "true").strip().lower()
     return value not in {"0", "false", "no", "off"}
 
@@ -18,6 +20,8 @@ def create_llm_client() -> LLMClient | None:
 
     The app must work even when this returns None.
     """
+    load_local_env()
+
     if not llm_enabled():
         return None
 

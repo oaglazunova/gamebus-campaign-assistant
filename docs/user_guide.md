@@ -134,11 +134,15 @@ The Assistant automatically routes questions to the relevant support mode. You d
 The current default checks are:
 
 * `secrets`
-* `spellchecker`
 * `reachability`
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
+
+The check picker also includes optional checks:
+
+* `spellchecker` — German-only spellchecking, disabled by default because it can be slow on some machines;
+* `ttm` — HW8-specific progression review, disabled by default because it is not a universal theory-validation check.
 
 The checker output is the source of truth for detected export-level issues.
 
@@ -274,4 +278,4 @@ Also check:
 
 * `README.md`
 * `CHANGELOG.md`
-* `AGENTS.MD`
+* `AGENTS.md`

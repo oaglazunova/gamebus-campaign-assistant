@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 import tempfile
 
 import pandas as pd
 
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
+from campaign_assistant.checker.native_consistency import run_native_consistency_tables
+from campaign_assistant.checker.native_reachability import run_native_reachability_tables
+from campaign_assistant.checker.native_secrets import run_native_secrets_tables
+from campaign_assistant.checker.native_spellchecker import run_native_spellchecker_tables
+from campaign_assistant.checker.native_targetpointsreachable import run_native_targetpointsreachable_tables
+from campaign_assistant.checker.native_ttm import run_native_ttm_tables
+from campaign_assistant.checker.native_visualizationintern import run_native_visualizationintern_tables
 from campaign_assistant.checker.prioritization import issue_priority_score
 from campaign_assistant.checker.schema import (
     CONSISTENCY,
@@ -18,264 +23,131 @@ from campaign_assistant.checker.schema import (
     SECRETS,
     SPELLCHECKER,
     TARGETPOINTSREACHABLE,
+    TTMSTRUCTURE,
     VISUALIZATIONINTERN,
-    SEVERITY_BY_CHECK,
 )
-from campaign_assistant.checker.native_reachability import run_native_reachability_tables
-from campaign_assistant.checker.native_consistency import run_native_consistency_tables
-from campaign_assistant.checker.native_visualizationintern import run_native_visualizationintern_tables
-from campaign_assistant.checker.native_secrets import run_native_secrets_tables
-from campaign_assistant.checker.native_spellchecker import run_native_spellchecker_tables
-from campaign_assistant.checker.native_targetpointsreachable import run_native_targetpointsreachable_tables
-
-
-HERE = Path(__file__).resolve().parent
-PACKAGE_ROOT = HERE.parent
-LEGACY_FILE = PACKAGE_ROOT / "legacy" / "gamebus_campaign_checker.py"
-
-spec = importlib.util.spec_from_file_location(
-    "campaign_assistant_legacy_checker",
-    LEGACY_FILE,
+from campaign_assistant.checker.table_utils import (
+    _active_wave_ids,
+    _clean_scalar,
+    _get_now_timestamp,
+    _get_table,
+    load_workbook_tables,
 )
-legacy_checker = importlib.util.module_from_spec(spec)
-assert spec is not None and spec.loader is not None
-spec.loader.exec_module(legacy_checker)
-
-CampaignChecker = legacy_checker.CampaignChecker
 
 
-def _patch_legacy_checker() -> None:
-    """
-    Apply runtime compatibility patches without modifying the legacy file itself.
-    """
-    if not hasattr(CampaignChecker, "addErrors"):
-        CampaignChecker.addErrors = CampaignChecker.addError
-
-    if not hasattr(CampaignChecker, "checkTargetPointsReachable"):
-        CampaignChecker.checkTargetPointsReachable = (
-            CampaignChecker.checkChallengeTargetPointsCanBeReached
-        )
+NATIVE_CHECK_RUNNERS = {
+    REACHABILITY: run_native_reachability_tables,
+    CONSISTENCY: run_native_consistency_tables,
+    VISUALIZATIONINTERN: run_native_visualizationintern_tables,
+    SECRETS: run_native_secrets_tables,
+    SPELLCHECKER: run_native_spellchecker_tables,
+    TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
+    TTMSTRUCTURE: run_native_ttm_tables,
+}
 
 
-    def reachable_challenges_intern(self, challenge, visitedids=None):
-        if visitedids is None:
-            visitedids = []
-        if challenge is None:
-            return [], visitedids
-
-        cid = challenge["id"]
-        if cid in visitedids:
-            return [], visitedids
-
-        visitedids = [*visitedids, cid]
-
-        if self.isChallengeTerminalLevel(challenge):
-            return [challenge], visitedids
-
-        result = []
-        nexts = [
-            self.getChallengeSuccessChallenge(challenge),
-            self.getChallengeFailureChallenge(challenge),
-        ]
-        nexts = [n for n in nexts if n is not None and n["id"] not in visitedids]
-
-        for c in nexts:
-            res, visitedids = reachable_challenges_intern(self, c, visitedids)
-            result.extend(res)
-
-        return result, visitedids
-
-    def reachable(self, fromchallenge, tochallenge, successonly=True, visitedids=None):
-        if visitedids is None:
-            visitedids = []
-        if fromchallenge is None or tochallenge is None:
-            return False
-        if self.challengeEqual(fromchallenge, tochallenge):
-            return True
-
-        visitedids = [*visitedids, fromchallenge["id"]]
-
-        nexts = []
-        if not self.isChallengeTerminalLevel(fromchallenge):
-            nexts.append(self.getChallengeSuccessChallenge(fromchallenge))
-        if not successonly:
-            nexts.append(self.getChallengeFailureChallenge(fromchallenge))
-
-        nexts = [n for n in nexts if n is not None and n["id"] not in visitedids]
-
-        return any(
-            reachable(self, c, tochallenge, successonly=successonly, visitedids=visitedids)
-            for c in nexts
-        )
-
-    CampaignChecker.reachableChallengesIntern = reachable_challenges_intern
-    CampaignChecker.reachable = reachable
+EXCEL_REPORT_COLUMNS = ["Kind", "Visualization", "Challenge", "Error", "URL"]
 
 
-_patch_legacy_checker()
-
-
-def _is_nan(value: Any) -> bool:
-    try:
-        return bool(pd.isna(value))
-    except Exception:
-        return False
-
-
-def _clean_scalar(value: Any) -> Any:
-    if _is_nan(value):
-        return None
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    return value
-
-
-def _get_now_timestamp() -> pd.Timestamp:
-    return pd.Timestamp.now().tz_localize(None)
-
-
-def _active_wave_ids(checker: CampaignChecker) -> set:
-    waves = checker.gc.get("waves")
-    if waves is None or waves.empty:
-        return set()
-
-    now = _get_now_timestamp()
-    active = set()
-
-    for _, row in waves.iterrows():
-        start = row.get("start")
-        end = row.get("end")
-        if pd.notna(start) and pd.notna(end) and start <= now <= end:
-            active.add(row["id"])
-
-    return active
-
-
-def _issue_from_legacy(
-    check_name: str,
-    checker: CampaignChecker,
-    issue: Dict[str, Any],
-    active_wave_ids: set,
-) -> Issue:
-    vis = issue["visualization"]
-    ch = issue["challenge"]
-
-    vis_id = _clean_scalar(vis.get("id")) if hasattr(vis, "get") else None
-    vis_desc = _clean_scalar(vis.get("description")) if hasattr(vis, "get") else ""
-    wave_id = _clean_scalar(vis.get("wave")) if hasattr(vis, "get") else None
-    ch_id = _clean_scalar(ch.get("id")) if hasattr(ch, "get") else None
-    ch_name = _clean_scalar(ch.get("name")) if hasattr(ch, "get") else ""
-
-    active_wave = wave_id in active_wave_ids if wave_id is not None else False
-    severity = SEVERITY_BY_CHECK.get(check_name, "medium")
-    url = checker.getChallengeEditURL(vis, ch)
-
-    return Issue(
-        check=check_name,
-        severity=severity,
-        active_wave=active_wave,
-        visualization_id=vis_id,
-        visualization=str(vis_desc or ""),
-        challenge_id=ch_id,
-        challenge=str(ch_name or ""),
-        wave_id=wave_id,
-        message=str(issue["error"]),
-        url=url,
-    )
-
-
-def export_issues_to_excel(issues: List[Issue], output_path: str | Path) -> str:
-    """
-    Export normalized issues to an Excel file, matching the legacy legacy format.
-    """
-    output_path = str(output_path)
-    # Legacy format columns: 'Kind', 'Visualization', 'Challenge', 'Error', 'URL'
-    rows = []
-    for issue in issues:
-        rows.append({
+def export_issues_to_excel(issues: list[Issue], output_path: str | Path) -> str:
+    """Export normalized issues to the traditional GameBus checker Excel format."""
+    rows = [
+        {
             "Kind": issue.check,
             "Visualization": issue.visualization,
             "Challenge": issue.challenge,
             "Error": issue.message,
             "URL": issue.url,
-        })
-    df = pd.DataFrame(rows)
+        }
+        for issue in issues
+    ]
+    df = pd.DataFrame(rows, columns=EXCEL_REPORT_COLUMNS)
 
-    if df.empty:
-        df = pd.DataFrame(
-            columns=["Kind", "Visualization", "Challenge", "Error", "URL"]
-        )
-
+    output_path = str(output_path)
     with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
         df.to_excel(writer, sheet_name="Errors", index=False)
         worksheet = writer.sheets["Errors"]
 
-        (max_row, max_col) = df.shape
+        max_row, max_col = df.shape
         column_settings = [{"header": column} for column in df.columns]
-        # Add the Excel table structure.
         worksheet.add_table(0, 0, max_row, max_col - 1, {"columns": column_settings})
-
         worksheet.autofit()
 
     return output_path
 
 
+def _build_waves_summary(tables: dict[str, pd.DataFrame], active_wave_ids: set[Any]) -> list[dict[str, Any]]:
+    try:
+        waves_df = _get_table(tables, "waves")
+    except KeyError:
+        return []
+
+    if waves_df.empty:
+        return []
+
+    waves: list[dict[str, Any]] = []
+    for _, row in waves_df.iterrows():
+        wave_id = _clean_scalar(row.get("id"))
+        waves.append(
+            {
+                "id": wave_id,
+                "name": _clean_scalar(row.get("name")),
+                "start": _clean_scalar(row.get("start")),
+                "end": _clean_scalar(row.get("end")),
+                "active_now": wave_id in active_wave_ids,
+            }
+        )
+
+    return waves
+
+
+def _excel_report_path_for(file_path: str | Path) -> Path:
+    output_dir = Path(tempfile.gettempdir()) / "gamebus_campaign_assistant"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / f"issues-{Path(file_path).stem}.xlsx"
+
+
 def run_campaign_checks(
     file_path: str | Path,
-    checks: Optional[List[str]] = None,
+    checks: list[str] | None = None,
     export_excel: bool = False,
-) -> Dict[str, Any]:
-    """
-    Run selected checks on a GameBus campaign export and return normalized results.
-    """
-    checks = checks or DEFAULT_CHECKS
-    checker = CampaignChecker(str(file_path))
-    active_wave_ids = _active_wave_ids(checker)
+) -> dict[str, Any]:
+    """Run selected native checks on a GameBus campaign Excel export."""
+    selected_checks = list(checks or DEFAULT_CHECKS)
+    tables = load_workbook_tables(file_path)
+    now = _get_now_timestamp()
 
-    check_status: Dict[str, str] = {}
-    notes: List[str] = []
-    native_issues_by_check: Dict[str, List[Issue]] = {}
+    try:
+        waves_df = _get_table(tables, "waves")
+    except KeyError:
+        waves_df = pd.DataFrame()
+    active_wave_ids = _active_wave_ids(waves_df, now=now)
 
-    native_check_runners = {
-        REACHABILITY: run_native_reachability_tables,
-        CONSISTENCY: run_native_consistency_tables,
-        VISUALIZATIONINTERN: run_native_visualizationintern_tables,
-        SECRETS: run_native_secrets_tables,
-        SPELLCHECKER: run_native_spellchecker_tables,
-        TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
-    }
+    check_status: dict[str, str] = {}
+    notes: list[str] = []
+    issues: list[Issue] = []
 
-    for check_name in checks:
-        try:
-            if check_name in native_check_runners:
-                native_result = native_check_runners[check_name](
-                    checker.gc,
-                    now=_get_now_timestamp(),
-                )
-                check_status[check_name] = native_result["status"]
-                native_issues_by_check[check_name] = native_result["issues"]
-                notes.extend(native_result.get("notes", []))
-                continue
-
+    for check_name in selected_checks:
+        runner = NATIVE_CHECK_RUNNERS.get(check_name)
+        if runner is None:
             check_status[check_name] = "Error"
             notes.append(f"Unknown check '{check_name}'")
+            continue
+
+        try:
+            native_result = runner(tables, now=now)
         except Exception as exc:
             check_status[check_name] = "Error"
             notes.append(f"Check '{check_name}' crashed: {exc}")
-
-    issues: List[Issue] = []
-    for native_issues in native_issues_by_check.values():
-        issues.extend(native_issues)
-
-    for check_name, raw_issues in checker.errors.items():
-        if check_name not in checks or check_name in native_issues_by_check:
             continue
-        for raw in raw_issues:
-            issues.append(_issue_from_legacy(check_name, checker, raw, active_wave_ids))
+
+        check_status[check_name] = str(native_result.get("status", "Error"))
+        issues.extend(native_result.get("issues", []))
+        notes.extend(native_result.get("notes", []))
 
     issues.sort(key=issue_priority_score, reverse=True)
 
-    issues_by_check: Dict[str, List[Dict[str, Any]]] = {c: [] for c in checks}
+    issues_by_check: dict[str, list[dict[str, Any]]] = {check: [] for check in selected_checks}
     for issue in issues:
         issues_by_check.setdefault(issue.check, []).append(issue.to_dict())
 
@@ -285,41 +157,24 @@ def run_campaign_checks(
 
     excel_report_path = None
     if export_excel:
-        output_dir = Path(tempfile.gettempdir()) / "gamebus_campaign_assistant"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        excel_report_path = output_dir / f"issues-{Path(file_path).stem}.xlsx"
-        export_issues_to_excel(issues, excel_report_path)
-        excel_report_path = str(excel_report_path)
-
-    waves_df = checker.gc.get("waves", pd.DataFrame())
-    waves = []
-    if not waves_df.empty:
-        for _, row in waves_df.iterrows():
-            wave_id = _clean_scalar(row.get("id"))
-            waves.append(
-                {
-                    "id": wave_id,
-                    "name": _clean_scalar(row.get("name")),
-                    "start": _clean_scalar(row.get("start")),
-                    "end": _clean_scalar(row.get("end")),
-                    "active_now": wave_id in active_wave_ids,
-                }
-            )
+        report_path = _excel_report_path_for(file_path)
+        export_issues_to_excel(issues, report_path)
+        excel_report_path = str(report_path)
 
     return {
         "file_name": Path(file_path).name,
         "analyzed_at": datetime.now().isoformat(timespec="seconds"),
-        "checks_run": checks,
+        "checks_run": selected_checks,
         "summary": {
             "total_issues": len(issues),
             "passed_checks": passed_checks,
             "failed_checks": failed_checks,
             "errored_checks": errored_checks,
             "issue_count_by_check": {
-                name: len(issues_by_check.get(name, [])) for name in checks
+                name: len(issues_by_check.get(name, [])) for name in selected_checks
             },
         },
-        "waves": waves,
+        "waves": _build_waves_summary(tables, active_wave_ids),
         "issues_by_check": issues_by_check,
         "prioritized_issues": [issue.to_dict() for issue in issues[:25]],
         "notes": notes,

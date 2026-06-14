@@ -33,15 +33,13 @@ It is especially useful for people who want a guided interface for running and i
 
 ## Current project status
 
-This version ([0.2.x]) is intentionally narrow. It focuses on:
+This version ([0.2.1]) focuses on:
 
 * export-based campaign inspection;
 * clearer presentation of checker results;
-* one assistant chat for follow-up questions;
+* assistant chat for follow-up questions;
 * advisory behavior-change theory support;
 * simple campaign-flow visualization.
-
-Older experimental features related to metadata sidecars, workspace readiness, patch generation, and metadata-based fix proposals are not part of this release.
 
 ---
 
@@ -160,13 +158,17 @@ The diagram can be downloaded as SVG or opened in a new browser tab.
 The current default checks are:
 
 * `secrets`
-* `spellchecker`
 * `reachability`
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
 
-The exact behavior comes from the wrapped GameBus checker logic.
+Optional checks visible in the check picker include:
+
+* `spellchecker` — disabled by default because it is German-only and can be slow on some machines;
+* `ttm` — disabled by default because it is HW8-specific and does not prove formal TTM alignment.
+
+The checks are implemented as native export-based validators over the GameBus campaign Excel sheets.
 
 The checker output is the source of truth for detected export-level issues. If no issues are detected, this means only that the selected checks did not find issues. It does **not** prove that the campaign is optimal, theory-aligned, usable, or effective.
 
@@ -188,30 +190,6 @@ ollama pull gemma3:1b
 The configured model can be changed through environment variables, depending on your local setup.
 
 The Assistant is advisory. It should not override deterministic checker results.
-
----
-
-# Guardrails and limitations
-
-The Assistant uses a fact-sheet and response-guard layer.
-
-This helps prevent high-risk errors such as:
-
-* claiming that the checker found issues when no issues were found;
-* claiming that a passed check failed;
-* claiming that a campaign will cause weight loss or other health outcomes;
-* claiming formal TTM, COM-B, or BCT alignment without explicit evidence.
-
-Current limitations:
-
-* the app does not edit campaigns directly in GameBus;
-* it does not upload corrected files back to GameBus;
-* it does not compare two campaign files;
-* it does not generate new campaign content;
-* it does not formally validate behavior-change theory alignment;
-* it cannot determine whether a campaign will cause weight loss or other health outcomes.
-
-Effectiveness claims require intervention-content review and empirical evaluation.
 
 ---
 
@@ -268,8 +246,6 @@ streamlit run src/campaign_assistant/app.py
 ```powershell
 pytest
 ```
-[legacy_adapter.py](src/campaign_assistant/checker/legacy_adapter.py)
-The current test suite is aligned with the paper-release scope.
 
 ---
 

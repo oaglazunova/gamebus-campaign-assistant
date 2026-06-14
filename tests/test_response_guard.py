@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from campaign_assistant.agents.fact_sheet import build_fact_sheet
 from campaign_assistant.agents.intent_router import RoutedIntent
@@ -68,6 +68,60 @@ def test_guard_blocks_issue_claim_for_passed_check(minimal_analysis_result: dict
     assert "reachability" in guard.replacement_text
 
 
+def test_guard_allows_check_definition_answers_for_passed_checks(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 5
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["spellchecker"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 5}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="What does spellchecker do?",
+        answer="Spellchecker reports empty names, faulty text, and spelling errors in task and challenge names.",
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True
+
+
+def test_guard_allows_prioritization_definition_answers_for_passed_checks(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 5
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["reachability"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 5}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="How is prioritization calculated?",
+        answer="Each check has a severity level: reachability = high, secrets = medium. Scores are high = 300 and medium = 200.",
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True
+
+
 def test_guard_blocks_strong_outcome_claim(minimal_analysis_result: dict) -> None:
     facts = build_fact_sheet(minimal_analysis_result)
     route = RoutedIntent(
@@ -87,3 +141,33 @@ def test_guard_blocks_strong_outcome_claim(minimal_analysis_result: dict) -> Non
     assert guard.reason == "unsupported_outcome_claim"
     assert guard.replacement_text is not None
     assert "cannot determine whether the campaign will cause weight loss" in guard.replacement_text
+
+
+def test_guard_does_not_treat_inconsistency_as_consistency_check_claim(
+    minimal_analysis_result: dict,
+) -> None:
+    result = minimal_analysis_result.copy()
+    result["summary"] = dict(minimal_analysis_result["summary"])
+    result["summary"]["total_issues"] = 1
+    result["summary"]["failed_checks"] = ["secrets"]
+    result["summary"]["passed_checks"] = ["consistency"]
+    result["summary"]["issue_count_by_check"] = {"secrets": 1}
+
+    facts = build_fact_sheet(result)
+    route = RoutedIntent(
+        intent="campaign_support",
+        agent_name="campaign_support_agent",
+        reason="test",
+    )
+
+    guard = validate_agent_response(
+        question="Explain this finding.",
+        answer=(
+            "This secrets finding points to an inconsistency: the same secret "
+            "is used by copied tasks with different names."
+        ),
+        facts=facts,
+        route=route,
+    )
+
+    assert guard.safe is True

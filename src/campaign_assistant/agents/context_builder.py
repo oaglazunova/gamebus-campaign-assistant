@@ -2,6 +2,13 @@
 
 from typing import Any
 
+from campaign_assistant.checker.gamebus_fix_guidance import (
+    gamebus_fix_guidance_markdown_for_issue,
+)
+from campaign_assistant.agents.gamebus_studio_knowledge import (
+    gamebus_studio_facts_markdown_for_issue,
+)
+
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value or {}) if isinstance(value, dict) else {}
@@ -91,6 +98,8 @@ def _compact_finding(issue: dict[str, Any]) -> dict[str, Any]:
         "wave_id",
         "active_wave",
         "url",
+        "priority_score",
+        "priority_rationale",
     ]
 
     for field in optional_fields:
@@ -102,6 +111,20 @@ def _compact_finding(issue: dict[str, Any]) -> dict[str, Any]:
             value = _truncate_text(value, max_chars=300)
 
         compact[field] = value
+
+    fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+    if fix_guidance:
+        compact["deterministic_gamebus_fix_guidance"] = _truncate_text(
+            fix_guidance,
+            max_chars=1800,
+        )
+
+    gamebus_facts = gamebus_studio_facts_markdown_for_issue(issue)
+    if gamebus_facts:
+        compact["gamebus_studio_source_facts"] = _truncate_text(
+            gamebus_facts,
+            max_chars=1800,
+        )
 
     return compact
 
@@ -368,6 +391,60 @@ def format_llm_context_markdown(context: dict[str, Any]) -> str:
             check = finding.get("check") or "unknown"
             severity = finding.get("severity") or "unknown"
             lines.append(f"{idx}. [{severity}] {title} (check: {check})")
+
+            message = finding.get("message")
+            if message:
+                lines.append(f"   - Message: {message}")
+
+            visualization = finding.get("visualization")
+            if visualization:
+                lines.append(f"   - Visualization: {visualization}")
+
+            visualization_id = finding.get("visualization_id")
+            if visualization_id not in (None, ""):
+                lines.append(f"   - Visualization ID: {visualization_id}")
+
+            challenge = finding.get("challenge")
+            if challenge:
+                lines.append(f"   - Challenge: {challenge}")
+
+            challenge_id = finding.get("challenge_id")
+            if challenge_id not in (None, ""):
+                lines.append(f"   - Challenge ID: {challenge_id}")
+
+            wave_id = finding.get("wave_id")
+            if wave_id not in (None, ""):
+                lines.append(f"   - Wave ID: {wave_id}")
+
+            priority_score = finding.get("priority_score")
+            if priority_score not in (None, ""):
+                lines.append(f"   - Priority score: {priority_score}")
+
+            priority_rationale = finding.get("priority_rationale")
+            if priority_rationale:
+                lines.append(f"   - Priority rationale: {priority_rationale}")
+
+            url = finding.get("url")
+            if url:
+                lines.append(f"   - GameBus Studio URL: {url}")
+
+            fix_guidance = finding.get("deterministic_gamebus_fix_guidance")
+            if fix_guidance:
+                lines.append("   - Deterministic GameBus Studio fix guidance:")
+                for guidance_line in str(fix_guidance).splitlines():
+                    if guidance_line.strip():
+                        lines.append(f"     {guidance_line}")
+                    else:
+                        lines.append("")
+
+            gamebus_facts = finding.get("gamebus_studio_source_facts")
+            if gamebus_facts:
+                lines.append("   - GameBus Studio source facts:")
+                for fact_line in str(gamebus_facts).splitlines():
+                    if fact_line.strip():
+                        lines.append(f"     {fact_line}")
+                    else:
+                        lines.append("")
 
     extraction_warnings = _as_list(warnings.get("snapshot_extraction_warnings"))
     if extraction_warnings:

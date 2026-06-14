@@ -1,6 +1,7 @@
 from campaign_assistant.checker.explainers import summarize_result
 from campaign_assistant.checker.schema import (
     ALL_CHECKS,
+    CHECK_PICKER_CHECKS,
     CONSISTENCY,
     DEFAULT_CHECKS,
     EXPORT_STRUCTURAL_CHECKS,
@@ -9,6 +10,8 @@ from campaign_assistant.checker.schema import (
     SECRETS,
     SPELLCHECKER,
     TARGETPOINTSREACHABLE,
+    THEORY_SPECIFIC_CHECKS,
+    TTMSTRUCTURE,
     UNIVERSAL_CHECKS,
     VISUALIZATIONINTERN,
 )
@@ -28,6 +31,7 @@ def export_issues_to_excel(*args, **kwargs):
 
 __all__ = [
     "ALL_CHECKS",
+    "CHECK_PICKER_CHECKS",
     "CONSISTENCY",
     "DEFAULT_CHECKS",
     "EXPORT_STRUCTURAL_CHECKS",
@@ -36,6 +40,8 @@ __all__ = [
     "SECRETS",
     "SPELLCHECKER",
     "TARGETPOINTSREACHABLE",
+    "THEORY_SPECIFIC_CHECKS",
+    "TTMSTRUCTURE",
     "UNIVERSAL_CHECKS",
     "VISUALIZATIONINTERN",
     "run_campaign_checks",

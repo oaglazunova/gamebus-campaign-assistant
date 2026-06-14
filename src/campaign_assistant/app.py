@@ -7,21 +7,23 @@ from campaign_assistant.file_utils import sha256_file
 from campaign_assistant.storage import add_saved_campaign_abbreviation, get_cookie_file, load_password
 from campaign_assistant.ui.actions import run_analysis, save_uploaded_file
 from campaign_assistant.ui.assistant_chat import (
-    answer_question,
-    render_agent_trace_panel,
-    render_assistant_guide_panel,
-    render_assistant_page_status,
-    render_llm_status_panel,
-    render_prepared_question_panel,
+	answer_question,
+	focused_finding_for_quick_action,
+	quick_action_focuses_top_finding,
+	render_assistant_guide_panel,
+	render_assistant_page_status,
+	render_llm_status_panel,
+	render_prepared_question_panel,
 )
 from campaign_assistant.ui.findings import (
-    render_findings_overview_panel,
-    render_issues_panel,
+	render_findings_overview_panel,
+	render_issues_panel,
 )
 from campaign_assistant.ui.overview import render_analysis_overview
 from campaign_assistant.ui.session import init_state
 from campaign_assistant.ui.sidebar import render_sidebar
 from campaign_assistant.ui.copy import WORKFLOW_PAGE_COPY
+from campaign_assistant.agents.context_builder import build_llm_context
 
 
 st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", layout="wide")
@@ -57,6 +59,16 @@ def _render_source_info() -> None:
 			f"**{source_info['campaign_abbreviation']}**{tag}"
 		)
 
+
+def _update_source_info() -> None:
+	if isinstance(st.session_state.get("result"), dict):
+		st.session_state.result.setdefault("assistant_meta", {}).update(
+			{
+				"source_mode": st.session_state.last_source_info.get("mode"),
+				"source_label": st.session_state.last_source_info.get("file_name")
+								or st.session_state.last_source_info.get("campaign_abbreviation"),
+			}
+		)
 
 def _handle_run(sidebar: dict, logger) -> None:
 	if not sidebar["run_clicked"]:
@@ -109,14 +121,7 @@ def _handle_run(sidebar: dict, logger) -> None:
 					logger=logger,
 				)
 
-				if isinstance(st.session_state.get("result"), dict):
-					st.session_state.result.setdefault("assistant_meta", {}).update(
-						{
-							"source_mode": st.session_state.last_source_info.get("mode"),
-							"source_label": st.session_state.last_source_info.get("file_name")
-							                or st.session_state.last_source_info.get("campaign_abbreviation"),
-						}
-					)
+				_update_source_info()
 
 			else:
 				base_url = st.session_state.app_config.get("campaigns_base_url", "").strip()
@@ -171,14 +176,7 @@ def _handle_run(sidebar: dict, logger) -> None:
 					logger=logger,
 				)
 
-				if isinstance(st.session_state.get("result"), dict):
-					st.session_state.result.setdefault("assistant_meta", {}).update(
-						{
-							"source_mode": st.session_state.last_source_info.get("mode"),
-							"source_label": st.session_state.last_source_info.get("file_name")
-							                or st.session_state.last_source_info.get("campaign_abbreviation"),
-						}
-					)
+				_update_source_info()
 
 				st.session_state.settings = add_saved_campaign_abbreviation(
 					campaign_abbreviation, st.session_state.settings
@@ -247,34 +245,52 @@ def _render_overview_page(result) -> None:
 
 
 def _render_findings_page(result) -> None:
-    _render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
+	_render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
 
-    if not result:
-        _render_empty_workflow_state("Findings")
-        return
+	if not result:
+		_render_empty_workflow_state("Findings")
+		return
 
-    render_findings_overview_panel(result)
-    render_issues_panel(result)
+	render_findings_overview_panel(result)
+	render_issues_panel(result)
 
 
 def _handle_pending_assistant_prompt(logger, result) -> None:
 	pending = st.session_state.pop("assistant_pending_question", None)
+	quick_action = st.session_state.pop("assistant_pending_quick_action", None)
+
 	if not pending or not result:
 		return
 
 	pending = str(pending)
+	conversation_history = list(st.session_state.messages)
+
+	focused_finding = focused_finding_for_quick_action(result, quick_action)
+
+	if focused_finding:
+		st.session_state["assistant_focused_finding"] = focused_finding
+	elif quick_action_focuses_top_finding(quick_action):
+		st.session_state.pop("assistant_focused_finding", None)
 
 	logger.log_chat_user(pending)
+
 	st.session_state.messages.append({"role": "user", "content": pending})
 
-	answer = answer_question(pending, result)
+	answer = answer_question(
+		pending,
+		result,
+		conversation_history=conversation_history,
+		quick_action=quick_action,
+		focused_finding=st.session_state.get("assistant_focused_finding"),
+	)
+
 	logger.log_chat_assistant(answer)
 	st.session_state.messages.append({"role": "assistant", "content": answer})
 
 	st.rerun()
 
 
-def _render_assistant_page(logger, show_trace: bool) -> None:
+def _render_assistant_page(logger) -> None:
 	_render_page_intro("Assistant", WORKFLOW_PAGE_COPY["Assistant"]["description"])
 
 	result = st.session_state.result
@@ -291,12 +307,12 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 	with control_col1:
 		if st.button("Reset conversation", key="assistant-clear-conversation", use_container_width=True):
 			st.session_state.messages = []
+			st.session_state.pop("assistant_focused_finding", None)
+			st.session_state.pop("assistant_pending_quick_action", None)
+			st.session_state.pop("assistant_pending_question", None)
+			st.session_state.pop("assistant_prefill_prompt", None)
+			st.session_state.pop("assistant_notice", None)
 			st.rerun()
-	with control_col2:
-		st.caption(
-			"Ask about checker findings, campaign structure, or what to inspect next. "
-			"Finding-specific questions prepared from the Findings page appear near the chat input."
-		)
 
 	_handle_pending_assistant_prompt(logger, result)
 
@@ -316,14 +332,21 @@ def _render_assistant_page(logger, show_trace: bool) -> None:
 	user_question = st.chat_input("Ask about this campaign...")
 
 	if user_question:
+		conversation_history = list(st.session_state.messages)
+
 		logger.log_chat_user(user_question)
 		st.session_state.messages.append({"role": "user", "content": user_question})
-		answer = answer_question(user_question, result)
+
+		answer = answer_question(
+			user_question,
+			result,
+			conversation_history=conversation_history,
+			focused_finding=st.session_state.get("assistant_focused_finding"),
+		)
+
 		logger.log_chat_assistant(answer)
 		st.session_state.messages.append({"role": "assistant", "content": answer})
 		st.rerun()
-
-	render_agent_trace_panel(result, show_trace=show_trace)
 
 
 def main() -> None:
@@ -356,14 +379,12 @@ def main() -> None:
 		key="main_workflow_page",
 	)
 
-	show_trace = bool(st.session_state.get("show_agent_trace", False))
-
 	if selected_page == "Overview":
 		_render_overview_page(result)
 	elif selected_page == "Findings":
 		_render_findings_page(result)
 	else:
-		_render_assistant_page(logger, show_trace=show_trace)
+		_render_assistant_page(logger)
 
 
 if __name__ == "__main__":

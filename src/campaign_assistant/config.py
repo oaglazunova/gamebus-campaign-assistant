@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
 import json
+
 from pathlib import Path
 from typing import Any, Dict
 
 APP_NAME = "GameBus Campaign Assistant"
 APP_ID = "gamebus_campaign_assistant"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.1"
 
 # Paths
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -17,6 +19,27 @@ DOCS_DIR = REPO_ROOT / "docs"
 SAMPLES_DIR = REPO_ROOT / "samples"
 
 APP_CONFIG_FILE = CONFIG_DIR / "app_config.json"
+
+ENV_FILE = REPO_ROOT / ".env"
+
+
+def load_local_env() -> None:
+	"""
+	Load repo-level .env settings.
+
+	This is used for local LLM configuration, for example:
+	CAMPAIGN_ASSISTANT_LLM_MODEL=qwen3:8b
+	"""
+	try:
+		from dotenv import load_dotenv
+	except ImportError:
+		return
+
+	load_dotenv(ENV_FILE, override=True)
+
+
+load_local_env()
+
 
 DEFAULT_APP_CONFIG: Dict[str, Any] = {
 	"campaigns_base_url": "https://campaigns.healthyw8.gamebus.eu",

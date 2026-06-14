@@ -41,10 +41,5 @@ def explain_ttm() -> str:
     Explain the TTM structure expected by the current checker in plain language.
     """
     return (
-        "The current TTM check assumes this progression: "
-        "**Newbie → Rookie → Amateur → Proficient → Skilled → Expert → Master → Grandmaster**, "
-        "with additional **at-risk / relapse** levels around **Skilled**, **Expert**, and **Master**. "
-        "In plain language, the checker verifies that forward progression, relapse behavior, and terminal "
-        "levels follow this expected structure. If a TTM issue is reported, it usually means that a level "
-        "points to the wrong next level, the wrong fallback level, or breaks the intended progression."
+        "The current TTM check assumes an HW8-style long-term progression shape: several initial non-relapse levels (in this implementation - 4) should fail back to themselves, followed by relapse-aware levels with separate at-risk levels. It checks transition structure, not formal TTM theory alignment or exact level names."
     )

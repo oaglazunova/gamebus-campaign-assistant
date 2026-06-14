@@ -62,6 +62,16 @@ _UNSUPPORTED_THEORY_CLAIM_PATTERNS = [
 
 
 
+def uncertainty_response(question: str) -> str:
+    return (
+        "I’m not sure from the available campaign data. "
+        "The current checker context does not contain enough information to answer this confidently.\n\n"
+        "Try asking a more specific question, for example:\n"
+        "- `Explain the first finding in simple terms.`\n"
+        "- `What should I inspect first?`\n"
+        "- `How do I fix the secrets findings?`\n"
+        "- `How can I make this campaign more TTM-aligned?`"
+    )
 
 def _lower(text: str) -> str:
     return " ".join(str(text or "").lower().split())
@@ -70,6 +80,37 @@ def _lower(text: str) -> str:
 def _matches_any(text: str, patterns: list[str]) -> bool:
     normalized = _lower(text)
     return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _is_check_definition_question(question: str) -> bool:
+    normalized = _lower(question)
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in [
+            r"\bwhat does\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bwhat is\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bexplain\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bhow does\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+            r"\bhow is\b.*\b(check|checker|spellchecker|reachability|consistency|secrets|visualization|target points|ttm)\b",
+        ]
+    )
+
+
+def _is_prioritization_definition_question(question: str) -> bool:
+    normalized = _lower(question)
+
+    return any(
+        re.search(pattern, normalized)
+        for pattern in [
+            r"\bhow\b.*\bprioriti[sz]ation\b.*\bcalculat",
+            r"\bhow\b.*\bpriority\b.*\bcalculat",
+            r"\bhow\b.*\bprioriti[sz]ed\b",
+            r"\bpriority score\b",
+            r"\bprioriti[sz]ation\b",
+        ]
+    )
+
 
 
 def _clean_checker_result_replacement(question: str, facts: dict[str, Any]) -> str:
@@ -158,6 +199,23 @@ def _unsupported_theory_replacement(question: str, facts: dict[str, Any]) -> str
     )
 
 
+def _check_name_pattern(check_name: str) -> str:
+    """
+    Match a checker name as a standalone token.
+
+    This prevents false positives such as:
+    - check name 'consistency' matching the word 'inconsistency'
+    - check name 'secrets' matching unrelated longer words
+    """
+    escaped = re.escape(check_name)
+
+    # Normal word-style checks.
+    if check_name.isalpha():
+        return rf"(?<![A-Za-z0-9_]){escaped}(?![A-Za-z0-9_])"
+
+    return rf"\b{escaped}\b"
+
+
 def _claims_issue_for_non_failed_check(answer: str, facts: dict[str, Any]) -> str | None:
     checker = facts.get("checker_facts", {}) or {}
 
@@ -190,19 +248,26 @@ def _claims_issue_for_non_failed_check(answer: str, facts: dict[str, Any]) -> st
         "challenges",
     ]
 
+    problem_group = "|".join(re.escape(word) for word in problem_words)
+
     for check_name in _CHECK_NAMES:
         if check_name in allowed_problem_checks:
             continue
 
-        if check_name not in answer_lower:
+        check_pattern = _check_name_pattern(check_name)
+
+        # Do not use plain substring matching here. For example, the check name
+        # "consistency" must not match "inconsistency".
+        if not re.search(check_pattern, answer_lower):
             continue
 
-        # Detect claims such as "reachability issue", "reachability challenges",
-        # "issue with reachability", "problems in reachability".
-        problem_group = "|".join(re.escape(word) for word in problem_words)
-
-        direct_pattern = rf"\b{re.escape(check_name)}\b[\s\S]{{0,120}}\b({problem_group})\b"
-        reverse_pattern = rf"\b({problem_group})\b[\s\S]{{0,120}}\b{re.escape(check_name)}\b"
+        # Detect claims such as:
+        # - "reachability issue"
+        # - "reachability challenges"
+        # - "issue with reachability"
+        # - "problems in reachability"
+        direct_pattern = rf"{check_pattern}[\s\S]{{0,120}}\b({problem_group})\b"
+        reverse_pattern = rf"\b({problem_group})\b[\s\S]{{0,120}}{check_pattern}"
 
         if re.search(direct_pattern, answer_lower) or re.search(reverse_pattern, answer_lower):
             return check_name
@@ -284,16 +349,22 @@ def validate_agent_response(
             replacement_text=_clean_checker_result_replacement(question, facts),
         )
 
-
     # Guard 1b: do not claim issues for checks that did not fail.
-    unsupported_check = _claims_issue_for_non_failed_check(answer, facts)
-    if unsupported_check:
-        return GuardResult(
-            safe=False,
-            reason=f"unsupported_check_issue_claim:{unsupported_check}",
-            replacement_text=_checker_specific_replacement(question, facts, unsupported_check),
-
-        )
+    # Do not apply this guard to check-definition questions such as
+    # "what does spellchecker do?", because those answers describe the check in
+    # general and may mention errors, warnings, challenges, or reported fields
+    # without claiming that the current campaign has such findings.
+    if not (
+            _is_check_definition_question(question)
+            or _is_prioritization_definition_question(question)
+    ):
+        unsupported_check = _claims_issue_for_non_failed_check(answer, facts)
+        if unsupported_check:
+            return GuardResult(
+                safe=False,
+                reason=f"unsupported_check_issue_claim:{unsupported_check}",
+                replacement_text=_checker_specific_replacement(question, facts, unsupported_check),
+            )
 
     # Guard 2: no definitive causal outcome/effectiveness claims.
     if is_outcome_question(question) and _matches_any(answer, _STRONG_OUTCOME_CLAIM_PATTERNS):

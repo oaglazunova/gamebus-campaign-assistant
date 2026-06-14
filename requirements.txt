@@ -5,3 +5,4 @@ xlsxwriter>=3.2
 language-tool-python>=3.3
 requests>=2.32
 keyring>=25.2
+python-dotenv>=1.0

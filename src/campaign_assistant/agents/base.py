@@ -8,7 +8,7 @@ class BaseAgent(ABC):
     """
     Base class for user-triggered assistant agents.
 
-    Agents in the paper-release architecture receive compact context and return
+    Agents receive compact context and return
     text responses. They do not modify campaign files.
     """
 

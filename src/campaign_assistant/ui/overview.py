@@ -9,6 +9,7 @@ import streamlit.components.v1 as components
 
 from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
 from campaign_assistant.diagram import build_campaign_flow_svg
+from campaign_assistant.checker.check_metadata import PRIORITY_HINT
 
 
 def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
@@ -261,75 +262,100 @@ def _diagram_preview_height(svg: str) -> int:
 
 
 
-def render_analysis_overview(result: dict[str, Any], show_title: bool = True) -> None:
-    if show_title:
-        st.subheader("Overview")
+def _render_current_campaign_compact(result: dict[str, Any]) -> None:
+    snapshot = _campaign_snapshot(result)
+    counts = dict(snapshot.get("counts", {}) or {})
+    warnings = list(snapshot.get("extraction_warnings", []) or [])
 
-    file_name = result.get("file_name") or result.get("source_file") or "Current campaign"
+    file_name = (
+        result.get("file_name")
+        or result.get("source_file")
+        or snapshot.get("file_name")
+        or "Current campaign"
+    )
+
     checks_run = result.get("checks_run", []) or []
     total, high, medium, low = _summary_counts(result)
 
     st.markdown("### Current campaign")
-    st.write(f"**File:** {file_name}")
-    st.write(f"**Checks run:** {len(checks_run)}")
+    st.caption(f"File: `{file_name}`")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total issues", total)
-    c2.metric("High priority", high)
-    c3.metric("Medium priority", medium)
-    c4.metric("Low priority", low)
+    structure_cols = st.columns(5)
+    structure_cols[0].metric("Waves", counts.get("waves", 0))
+    structure_cols[1].metric("Visualizations", counts.get("visualizations", 0))
+    structure_cols[2].metric("Challenges", counts.get("challenges", 0))
+    structure_cols[3].metric("Tasks", counts.get("tasks", 0))
+    structure_cols[4].metric("Transitions", counts.get("transitions", 0))
 
-    _render_campaign_snapshot_summary(result)
-    _render_flow_diagram_panel(result)
+    st.markdown("### Analysis summary", help=PRIORITY_HINT)
 
-    st.markdown("### Status")
+    issue_cols = st.columns(5)
+    issue_cols[0].metric("Checks", len(checks_run))
+    issue_cols[1].metric("Issues", total)
+    issue_cols[2].metric("High", high)
+    issue_cols[3].metric("Medium", medium)
+    issue_cols[4].metric("Low", low)
 
-    if total > 0:
-        st.warning(
-            "Issues found. Before deployment, review the high-priority findings. "
-            "Use the Findings page to filter by severity, or start with the Top priorities list below."
-        )
-    else:
-        st.success(
-            "No issues were found by the selected checks. This does not prove that "
-            "the campaign is theoretically optimal or deployment-ready; it only means "
-            "that the selected export-level checks did not detect problems."
-        )
+    if warnings:
+        with st.expander("Snapshot extraction warnings", expanded=False):
+            for warning in warnings:
+                st.warning(str(warning))
 
+
+def _render_failed_checks_card(result: dict[str, Any]) -> None:
     failed_checks = _failed_checks(result)
+
+    st.markdown("#### Failed checks")
+
+    if failed_checks:
+        for check in failed_checks:
+            label = FRIENDLY_CHECK_NAMES.get(check, check)
+            st.markdown(f"- {label}")
+    else:
+        st.caption("No failed checks.")
+
+
+def _render_top_priorities_card(result: dict[str, Any]) -> None:
     top_priorities = _top_priorities(result)
 
-    if failed_checks or top_priorities:
-        left, right = st.columns(2)
+    st.markdown("#### Top priorities")
 
-        with left:
-            st.markdown("### Failed checks")
-            if failed_checks:
-                for check in failed_checks:
-                    label = FRIENDLY_CHECK_NAMES.get(check, check)
-                    st.markdown(f"- {label}")
-            else:
-                st.caption("No failed checks.")
+    if top_priorities:
+        for idx, label in enumerate(top_priorities, start=1):
+            st.markdown(f"{idx}. {label}")
+    else:
+        st.caption("No prioritized findings.")
 
-        with right:
-            st.markdown("### Top priorities")
-            if top_priorities:
-                for idx, label in enumerate(top_priorities, start=1):
-                    st.markdown(f"{idx}. {label}")
-            else:
-                st.caption("No prioritized findings.")
 
-    st.markdown("### Next steps")
+def _render_next_steps_card(result: dict[str, Any]) -> None:
+    total, _, _, _ = _summary_counts(result)
+
+    st.markdown("#### Next steps")
 
     if total > 0:
         st.markdown(
-            "- Open **Findings** to inspect issues in detail.\n"
-            "- Start with **High priority** findings.\n"
-            "- Use **Assistant** to ask what an issue means or what to inspect first."
+            "🔎 Open **Findings** to inspect issues. - ⚠️ Start with **High** priority findings. - 💬 Use **Assistant** to ask what an issue means and how to fix it."
         )
     else:
         st.markdown(
-            "- Open **Findings** to confirm which checks were run.\n"
-            "- Use **Assistant** if you want a short interpretation of the clean result.\n"
-            "- Remember that a clean checker result is not the same as full theory validation."
+            "✅ Open **Findings** to confirm which checks were run. - 💬 Use **Assistant** for a short interpretation if needed. - 🧭 Remember: clean checks are not proofs of deployment readiness."
         )
+
+
+
+def render_analysis_overview(result: dict[str, Any], show_title: bool = True) -> None:
+    if show_title:
+        st.subheader("Overview")
+
+    _render_current_campaign_compact(result)
+    _render_flow_diagram_panel(result)
+
+    _render_next_steps_card(result)
+
+    col1, col2 = st.columns([1, 1.5])
+
+    with col1:
+        _render_failed_checks_card(result)
+
+    with col2:
+        _render_top_priorities_card(result)

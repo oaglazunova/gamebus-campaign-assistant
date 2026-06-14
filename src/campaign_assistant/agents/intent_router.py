@@ -51,6 +51,12 @@ THEORY_KEYWORDS = [
     "outcome",
     "adherence",
     "engagement",
+    "self-determination",
+    "self determination",
+    "sdt",
+    "autonomy",
+    "competence",
+    "relatedness",
 ]
 
 CAMPAIGN_SUPPORT_KEYWORDS = [
@@ -86,6 +92,28 @@ CAMPAIGN_SUPPORT_KEYWORDS = [
     "points",
     "target points",
     "reachability",
+    "prioritization",
+    "prioritisation",
+    "prioritized",
+    "prioritised",
+    "highest-priority",
+    "highest priority",
+    "top-priority",
+    "top priority",
+    "overview",
+    "main issue patterns",
+]
+
+FOLLOW_UP_KEYWORDS = [
+    "this",
+    "it",
+    "that",
+    "shorter",
+    "simpler",
+    "rephrase",
+    "explain more",
+    "what does this mean",
+    "why",
 ]
 
 
@@ -137,7 +165,7 @@ class IntentRouter:
             )
 
         return RoutedIntent(
-            intent="campaign_support",
-            agent_name="campaign_support_agent",
-            reason="Default route for campaign-analysis questions.",
+            intent="unknown",
+            agent_name="unknown",
+            reason="No campaign, checker, finding, GameBus, or theory keyword matched.",
         )

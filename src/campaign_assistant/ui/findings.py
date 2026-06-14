@@ -5,7 +5,9 @@ from typing import Any
 
 import streamlit as st
 
+from campaign_assistant.checker.gamebus_fix_guidance import gamebus_fix_guidance_markdown_for_issue
 from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
+from campaign_assistant.checker.check_metadata import PRIORITY_HINT
 
 
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -125,7 +127,7 @@ def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
     check = str(issue.get("check") or "unknown")
 
     parts = [
-        "Explain this campaign finding and suggest what I should inspect next.",
+        "Explain this campaign finding.",
         "",
         f"Check: {check}",
         f"Severity: {severity}",
@@ -156,9 +158,17 @@ def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
 
 
 def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
+    focused_finding = dict(issue)
+
+    fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+    if fix_guidance:
+        focused_finding["deterministic_gamebus_fix_guidance"] = fix_guidance
+
+    st.session_state["assistant_focused_finding"] = focused_finding
     st.session_state["assistant_prefill_prompt"] = _assistant_prompt_for_issue(issue)
     st.session_state["assistant_notice"] = (
-        "This question was prepared from a finding."
+        "This question was prepared from a finding. Follow-up questions such as "
+        "`How do I fix this?` will refer to this selected finding."
     )
 
     st.session_state["requested_workflow_page"] = "Assistant"
@@ -169,6 +179,8 @@ def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
         pass
 
 
+
+
 def _severity_badge(severity: str) -> str:
     severity = severity.lower()
     if severity in {"critical", "high"}:
@@ -177,7 +189,7 @@ def _severity_badge(severity: str) -> str:
         return "🟠 Medium"
     if severity == "low":
         return "🟡 Low"
-    return "⚪ Unspecified"
+    return "⚪ No severity"
 
 
 def _count_by_severity(issues: list[dict[str, Any]]) -> dict[str, int]:
@@ -215,7 +227,7 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
     severity_counts = _count_by_severity(issues)
     check_counts = _count_by_check(issues)
 
-    st.markdown("### Findings overview")
+    st.subheader("Findings overview", help=PRIORITY_HINT)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total", total)
@@ -248,34 +260,38 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         st.info("No findings to display.")
         return
 
-    st.markdown("### Findings")
-
-    severity_filter = st.selectbox(
-        "Severity",
-        options=["All", "High", "Medium", "Low", "Unspecified"],
-        index=0,
-        key="findings-severity-filter",
-    )
-
     checks = sorted({str(issue.get("check") or "unknown") for issue in issues})
     check_options = ["All"] + [_check_label(check) for check in checks]
     check_label_to_id = {"All": "All"}
     check_label_to_id.update({_check_label(check): check for check in checks})
 
-    selected_check_label = st.selectbox(
-        "Check",
-        options=check_options,
-        index=0,
-        key="findings-check-filter",
-    )
-    selected_check = check_label_to_id[selected_check_label]
+    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2])
 
-    query = st.text_input(
-        "Search findings",
-        value="",
-        key="findings-search-query",
-        placeholder="Search by message, challenge, visualization, or check",
-    ).strip().lower()
+    with filter_col1:
+        severity_filter = st.selectbox(
+            "Severity",
+            options=["All", "High", "Medium", "Low", "No severity"],
+            index=0,
+            key="findings-severity-filter",
+        )
+
+    with filter_col2:
+        selected_check_label = st.selectbox(
+            "Check",
+            options=check_options,
+            index=0,
+            key="findings-check-filter",
+        )
+
+    with filter_col3:
+        query = st.text_input(
+            "Search findings",
+            value="",
+            key="findings-search-query",
+            placeholder="Search by message, challenge, visualization, or check",
+        ).strip().lower()
+
+    selected_check = check_label_to_id[selected_check_label]
 
     filtered = sorted(issues, key=_severity_rank)
 
@@ -283,7 +299,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         selected = severity_filter.lower()
         if selected == "high":
             filtered = [issue for issue in filtered if _severity(issue) in {"critical", "high"}]
-        elif selected == "unspecified":
+        elif selected == "no severity":
             filtered = [issue for issue in filtered if _severity(issue) not in {"critical", "high", "medium", "low"}]
         else:
             filtered = [issue for issue in filtered if _severity(issue) == selected]
@@ -309,13 +325,13 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         grouped[str(issue.get("check") or "unknown")].append(issue)
 
     for check_id, check_issues in grouped.items():
-        with st.expander(f"{_check_label(check_id)} — {len(check_issues)} finding(s)", expanded=True):
+        with st.expander(f"{_check_label(check_id)} - {len(check_issues)} finding(s)", expanded=True):
             for idx, issue in enumerate(check_issues, start=1):
                 title = _issue_title(issue)
                 message = _issue_message(issue)
                 severity = _severity(issue)
 
-                st.markdown(f"#### {idx}. {_severity_badge(severity)} — {title}")
+                st.markdown(f"#### {idx}. {_severity_badge(severity)} - {title}")
 
                 if message:
                     st.write(message)
@@ -323,6 +339,11 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 location = _location_lines(issue)
                 if location:
                     st.markdown("\n".join(f"- {line}" for line in location))
+
+                fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+                if fix_guidance:
+                    with st.expander("How to fix this in GameBus Studio", expanded=False):
+                        st.markdown(fix_guidance)
 
                 button_key = (
                     f"ask-assistant-{check_id}-"
