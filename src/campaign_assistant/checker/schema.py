@@ -12,10 +12,16 @@ SECRETS = "secrets"
 SPELLCHECKER = "spellchecker"
 TTMSTRUCTURE = "ttm"
 
+# Additional campaign-quality checks.
+TEXTPOINTSCONSISTENCY = "textpointsconsistency"
+DUPLICATETASKNAMES = "duplicatetasknames"
+
 # Checks that can be computed from the campaign export itself.
 UNIVERSAL_CHECKS = [
     SECRETS,
     SPELLCHECKER,
+    TEXTPOINTSCONSISTENCY,
+    DUPLICATETASKNAMES,
 ]
 
 EXPORT_STRUCTURAL_CHECKS = [
@@ -38,6 +44,8 @@ CHECK_PICKER_CHECKS = [
     CONSISTENCY,
     VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
+    TEXTPOINTSCONSISTENCY,
+    DUPLICATETASKNAMES,
     TTMSTRUCTURE,
 ]
 
@@ -50,6 +58,8 @@ DEFAULT_CHECKS = [
     CONSISTENCY,
     VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
+    TEXTPOINTSCONSISTENCY,
+    DUPLICATETASKNAMES,
 ]
 
 # Complete supported runtime check list.
@@ -68,6 +78,8 @@ FRIENDLY_CHECK_NAMES = {
     SECRETS: "Secrets",
     SPELLCHECKER: "Spellchecker",
     TTMSTRUCTURE: "TTM structure",
+    TEXTPOINTSCONSISTENCY: "Text vs points consistency",
+    DUPLICATETASKNAMES: "Duplicate task names",
 }
 
 # Used for issue prioritization.
@@ -79,6 +91,8 @@ SEVERITY_BY_CHECK = {
     SECRETS: "medium",
     SPELLCHECKER: "low",
     TTMSTRUCTURE: "medium",
+    TEXTPOINTSCONSISTENCY: "medium",
+    DUPLICATETASKNAMES: "medium",
 }
 
 

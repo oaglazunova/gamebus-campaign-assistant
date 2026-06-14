@@ -25,14 +25,19 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    DUPLICATETASKNAMES,
+    TEXTPOINTSCONSISTENCY,
 )
 from campaign_assistant.checker.table_utils import (
     _active_wave_ids,
     _clean_scalar,
     _get_now_timestamp,
     _get_table,
+    _normalise_id,
     load_workbook_tables,
 )
+from campaign_assistant.checker.native_duplicatetasknames import run_native_duplicatetasknames_tables
+from campaign_assistant.checker.native_textpointsconsistency import run_native_textpointsconsistency_tables
 
 
 NATIVE_CHECK_RUNNERS = {
@@ -43,6 +48,8 @@ NATIVE_CHECK_RUNNERS = {
     SPELLCHECKER: run_native_spellchecker_tables,
     TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,
     TTMSTRUCTURE: run_native_ttm_tables,
+    TEXTPOINTSCONSISTENCY: run_native_textpointsconsistency_tables,
+    DUPLICATETASKNAMES: run_native_duplicatetasknames_tables,
 }
 
 
@@ -87,7 +94,7 @@ def _build_waves_summary(tables: dict[str, pd.DataFrame], active_wave_ids: set[A
 
     waves: list[dict[str, Any]] = []
     for _, row in waves_df.iterrows():
-        wave_id = _clean_scalar(row.get("id"))
+        wave_id = _normalise_id(row.get("id"))
         waves.append(
             {
                 "id": wave_id,
