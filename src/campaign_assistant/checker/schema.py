@@ -50,8 +50,6 @@ CHECK_PICKER_CHECKS = [
 ]
 
 # Checks used when no explicit selection is provided.
-# Spellchecker is intentionally excluded because it is German-only and can be slow.
-# TTM structure is intentionally excluded because it is HW8 long-term-campaign specific.
 DEFAULT_CHECKS = [
     SECRETS,
     REACHABILITY,
@@ -59,7 +57,6 @@ DEFAULT_CHECKS = [
     VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
     TEXTPOINTSCONSISTENCY,
-    DUPLICATETASKNAMES,
 ]
 
 # Complete supported runtime check list.
