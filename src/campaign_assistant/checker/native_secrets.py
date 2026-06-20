@@ -1,3 +1,20 @@
+# This file contains checker logic adapted from GameBusChecker:
+# https://github.com/SergeAutexier/GameBusChecker
+#
+# Original work:
+#   Author: Serge Autexier
+#   Copyright: DFKI GmbH 2026
+#   License: Apache License 2.0
+#
+# Modifications:
+#   Refactored and extended for GameBus Campaign Assistant by Olga Glazunova, 2026.
+#   Changes include native checker integration, issue normalization, defensive handling
+#   of campaign-export edge cases, assistant-facing messages, and additional guidance.
+#
+# Unless otherwise stated, original code in this repository is licensed under MIT.
+# The adapted GameBusChecker-derived portions remain subject to Apache License 2.0.
+
+
 from __future__ import annotations
 
 import re
