@@ -162,11 +162,14 @@ The current default checks are:
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
+* `textpointsconsistency`
+* `textpointsconsistency` — checks whether participant-facing task text mentions a point value that differs from the exported task points setting;
 
 Optional checks visible in the check picker include:
 
 * `spellchecker` — disabled by default because it is German-only and can be slow on some machines;
 * `ttm` — disabled by default because it is HW8-specific and does not prove formal TTM alignment.
+* `duplicatetasknames` — checks reused task names only when the duplicated tasks have meaningfully different settings.
 
 The checks are implemented as native export-based validators over the GameBus campaign Excel sheets.
 
@@ -251,4 +254,18 @@ pytest
 
 # License
 
-See the `LICENSE` file.
+Unless otherwise stated, original code in this repository is licensed under the MIT License. See `LICENSE`.
+
+This project includes deterministic campaign-checking logic adapted from GameBusChecker by Serge Autexier, licensed under the Apache License 2.0. See `THIRD_PARTY_NOTICES.md` and `licenses/Apache-2.0.txt`:
+
+```text
+src/campaign_assistant/checker/native_consistency.py
+src/campaign_assistant/checker/native_reachability.py
+src/campaign_assistant/checker/native_secrets.py
+src/campaign_assistant/checker/native_spellchecker.py
+src/campaign_assistant/checker/native_targetpointsreachable.py
+src/campaign_assistant/checker/native_ttm.py
+src/campaign_assistant/checker/native_visualizationintern.py
+```
+
+The adapted checker logic was modified for the GameBus Campaign Assistant workflow, including corrections, generalization of selected checks, integration into native checker modules, assistant-facing explanations, prioritization, and additional checks.

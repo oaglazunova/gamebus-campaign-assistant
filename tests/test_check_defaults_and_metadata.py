@@ -17,10 +17,12 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    DUPLICATETASKNAMES,
+    TEXTPOINTSCONSISTENCY,
 )
 
 
-def test_spellchecker_and_ttm_are_visible_but_disabled_by_default() -> None:
+def test_default_checks_include_actionable_checks_but_exclude_optional_checks() -> None:
     assert SPELLCHECKER in CHECK_PICKER_CHECKS
     assert TTMSTRUCTURE in CHECK_PICKER_CHECKS
 
@@ -33,6 +35,8 @@ def test_spellchecker_and_ttm_are_visible_but_disabled_by_default() -> None:
         CONSISTENCY,
         VISUALIZATIONINTERN,
         TARGETPOINTSREACHABLE,
+        TEXTPOINTSCONSISTENCY,
+        DUPLICATETASKNAMES,
     ]
 
 

@@ -12,6 +12,8 @@ from campaign_assistant.checker.schema import (
     SPELLCHECKER,
     TARGETPOINTSREACHABLE,
     VISUALIZATIONINTERN,
+    DUPLICATETASKNAMES,
+    TEXTPOINTSCONSISTENCY,
 )
 
 
@@ -185,6 +187,54 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
             "If tasks should be repeatable more often, increase Reward count or reduce Time window for resetting the reward count.",
             "If participants should have more time, choose a longer Evaluate failure interval.",
             "If the checker says reachable points cannot be computed, fill missing numeric values for Target points, Evaluate failure interval, Reward count, Time window for resetting the reward count, and Number of points to award.",
+        ),
+        verification=_GENERIC_VERIFICATION,
+    ),
+    TEXTPOINTSCONSISTENCY: GameBusFixGuidance(
+        title="Fix mismatch between task text and awarded points",
+        studio_location=(
+            "Open GameBus Studio campaign editor.",
+            "Open the campaign and the visualization/group shown in the finding.",
+            "Open the reported challenge/level.",
+            "In the Tasks section, open the reported task.",
+        ),
+        fields_to_check=(
+            "Task → Short task description. This is exported as the task name.",
+            "Task → Description. This is participant-facing explanatory text.",
+            "Task → Number of points to award. This is the actual points value GameBus awards.",
+        ),
+        fix_steps=(
+            "Compare the point value mentioned in Short task description or Description with Number of points to award.",
+            "If the text is wrong, edit the task text so it describes the actual number of points awarded.",
+            "If the points setting is wrong, change Number of points to award to match the intended participant-facing text.",
+            "Check both language versions if the text is bilingual; the checker may report a number from either part of the text.",
+            "Do not change reward count or reset window unless the intended fix is about how often the task can award points; this check is about the visible point number versus the exported points value.",
+        ),
+        verification=_GENERIC_VERIFICATION,
+    ),
+    DUPLICATETASKNAMES: GameBusFixGuidance(
+        title="Review duplicate task names with different settings",
+        studio_location=(
+            "Open GameBus Studio campaign editor.",
+            "Open the campaign and the visualization/group shown in the finding.",
+            "Open each challenge/level listed in the finding.",
+            "In each level, open the task with the duplicated Short task description.",
+        ),
+        fields_to_check=(
+            "Task → Short task description. This is the duplicated participant-facing task name.",
+            "Task → Description. This may explain whether the duplicate is intentional.",
+            "Task → Number of points to award.",
+            "Task → Reward count.",
+            "Task → Time window for resetting the reward count.",
+            "Task → Allowed activity types and Allowed data sources.",
+            "Task → Conditions → Property / Operator / Value.",
+        ),
+        fix_steps=(
+            "Compare the duplicated tasks listed in the finding.",
+            "If they are meant to be different tasks, rename them so participants and editors can distinguish them.",
+            "If they are meant to be the same task, align the relevant settings: points, reward count, reset window, allowed activity types, data sources, and conditions.",
+            "If the same name is intentionally reused with different settings across levels, keep it but treat the finding as a warning.",
+            "This check reports only duplicate names with meaningful setting differences; exact duplicates are not reported.",
         ),
         verification=_GENERIC_VERIFICATION,
     ),
@@ -567,6 +617,54 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
                 fix_steps=(
                     "Fill Target points with the intended numeric target.",
                     "If this level should not use target points, verify whether it should be part of the point-target progression checked by this validator.",
+                ),
+                verification=_GENERIC_VERIFICATION,
+            ).as_markdown()
+
+        if check == TEXTPOINTSCONSISTENCY:
+            return GameBusFixGuidance(
+                title="Make task text and awarded points match",
+                studio_location=(
+                    "Open the reported challenge/level in GameBus Studio.",
+                    "In the Tasks section, open the reported task.",
+                ),
+                fields_to_check=(
+                    "Task → Short task description.",
+                    "Task → Description.",
+                    "Task → Number of points to award.",
+                ),
+                fix_steps=(
+                    "Find the point value mentioned in the task text.",
+                    "Compare it with Number of points to award.",
+                    "If the text is wrong, correct the point value in Short task description or Description.",
+                    "If the configuration is wrong, change Number of points to award.",
+                    "For bilingual text, check both language versions before deciding which value is wrong.",
+                ),
+                verification=_GENERIC_VERIFICATION,
+            ).as_markdown()
+
+        if check == DUPLICATETASKNAMES:
+            return GameBusFixGuidance(
+                title="Distinguish duplicate task names or align their settings",
+                studio_location=(
+                    "Open each challenge/level listed in the finding.",
+                    "In each level, open the task with the duplicated Short task description.",
+                ),
+                fields_to_check=(
+                    "Task → Short task description.",
+                    "Task → Description.",
+                    "Task → Number of points to award.",
+                    "Task → Reward count.",
+                    "Task → Time window for resetting the reward count.",
+                    "Task → Allowed activity types.",
+                    "Task → Allowed data sources.",
+                    "Conditions → Property / Operator / Value.",
+                ),
+                fix_steps=(
+                    "If the tasks are meant to behave differently, rename them so the difference is visible to editors and participants.",
+                    "If the tasks are meant to be the same, align their settings.",
+                    "If the duplicate name is intentional across levels, keep it and treat the finding as a warning.",
+                    "Use the finding message to compare the listed challenge references.",
                 ),
                 verification=_GENERIC_VERIFICATION,
             ).as_markdown()

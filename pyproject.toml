@@ -48,6 +48,11 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+license-files = [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses/Apache-2.0.txt",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

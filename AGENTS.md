@@ -162,6 +162,7 @@ REACHABILITY
 CONSISTENCY
 VISUALIZATIONINTERN
 TARGETPOINTSREACHABLE
+TEXTPOINTSCONSISTENCY 
 ```
 
 The check picker also exposes optional checks that are intentionally disabled by default:
@@ -169,8 +170,8 @@ The check picker also exposes optional checks that are intentionally disabled by
 ```python
 SPELLCHECKER  # German-only and can be slow on some machines
 TTMSTRUCTURE  # HW8-specific progression review, not formal TTM validation
+DUPLICATETASKNAMES # Reused task names only when duplicated tasks differ in meaningful settings
 ```
-
 Use constants from `campaign_assistant.checker.schema` rather than hard-coded strings where possible.
 
 Do not present optional TTM structure checks as formal TTM validation. Keep them explicitly scoped as HW8-specific progression review unless they are redesigned and validated for broader use.
