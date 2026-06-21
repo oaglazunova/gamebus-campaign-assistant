@@ -138,15 +138,29 @@ The current default checks are:
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
+* `textpointsconsistency`
+* `duplicatetasknames`
 
-The check picker also includes optional checks:
+These checks look for export-level campaign configuration issues.
+
+The main default checks cover:
+
+* missing or reused task secrets;
+* progression reachability;
+* consistency of initial/start-level failure behavior;
+* visualization-internal progression issues;
+* target points that cannot be reached from task points and timing settings;
+* task text that mentions a different point value than the actual exported task points setting.
+
+Optional checks:
 
 * `spellchecker` — German-only spellchecking, disabled by default because it can be slow on some machines;
 * `ttm` — HW8-specific progression review, disabled by default because it is not a universal theory-validation check.
+* `duplicatetasknames` — checks reused task names only when the duplicated tasks have meaningfully different settings.
 
 The checker output is the source of truth for detected export-level issues.
 
-If the selected checks find zero issues, this means only that no issues were detected by those checks. It does **not** prove that the campaign is optimal, theory-aligned, or effective.
+If the selected checks find zero issues, this means only that no issues were detected by those checks. It does **not** prove that the campaign is optimal, theory-aligned, usable, or effective.
 
 ---
 

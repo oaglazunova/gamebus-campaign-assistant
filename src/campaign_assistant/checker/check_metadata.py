@@ -8,6 +8,8 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    DUPLICATETASKNAMES,
+    TEXTPOINTSCONSISTENCY,
 )
 
 
@@ -22,6 +24,8 @@ CHECK_HINTS: dict[str, str] = {
         "HW8 long-term-campaign-specific TTM progression check. "
         "May report false issues for campaigns with different progression logic."
     ),
+    TEXTPOINTSCONSISTENCY: "Whether participant-facing task text mentions point values that differ from the exported points setting.",
+    DUPLICATETASKNAMES: "Duplicate task names are reported only when the duplicated tasks have meaningfully different settings.",
 }
 
 
@@ -106,6 +110,19 @@ CHECK_EXPLANATIONS: dict[str, str] = {
         "to the previous level and succeed back to the current level. A terminal challenge should fail back to "
         "the previous level. This is not a universal TTM validator and may report false issues for campaigns "
         "with different progression logic. Severity: medium."
+    ),
+    TEXTPOINTSCONSISTENCY: (
+        "**Text vs points consistency check** scans task names and descriptions for participant-facing point values, "
+        "such as `10 points`, `10 Punkte`, `10 punten`, or `10 pontos`, and compares those values with the exported "
+        "`tasks.points` setting. It reports a medium-severity issue when the text appears to promise a different "
+        "number of points than GameBus will actually award. This check may need human review because some text may "
+        "mention points hypothetically or as part of an example."
+    ),
+    DUPLICATETASKNAMES: (
+        "**Duplicate task names check** groups tasks by normalized task name. It reports duplicates only when the "
+        "duplicated tasks differ in meaningful fields, such as points, conditions, provider, reward limits, reset "
+        "window, or challenge. Exact duplicates are not reported by this check. The goal is to find copied tasks "
+        "that look identical to participants but behave differently internally. Severity: medium."
     ),
 }
 

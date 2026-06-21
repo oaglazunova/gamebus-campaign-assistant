@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-06-14
+### Added
+
+- Added a text-vs-points consistency check that flags tasks where participant-facing text mentions a different point value than the exported task points setting.
+- Added a duplicate task names check that reports reused task names only when the duplicated tasks have meaningfully different settings.
+
+### Changed
+
+- New campaign-quality checks are enabled by default because they are directly actionable in GameBus Studio and do not duplicate existing Studio validation.
+
+
 ## [0.2.3] - 2026-06-14
 
 ### Fixed

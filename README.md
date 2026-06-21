@@ -33,7 +33,7 @@ It is especially useful for people who want a guided interface for running and i
 
 ## Current project status
 
-This version ([0.2.1]) focuses on:
+This version ([0.2.x]) focuses on:
 
 * export-based campaign inspection;
 * clearer presentation of checker results;
@@ -162,11 +162,14 @@ The current default checks are:
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
+* `textpointsconsistency`
+* `textpointsconsistency` — checks whether participant-facing task text mentions a point value that differs from the exported task points setting;
 
 Optional checks visible in the check picker include:
 
 * `spellchecker` — disabled by default because it is German-only and can be slow on some machines;
 * `ttm` — disabled by default because it is HW8-specific and does not prove formal TTM alignment.
+* `duplicatetasknames` — checks reused task names only when the duplicated tasks have meaningfully different settings.
 
 The checks are implemented as native export-based validators over the GameBus campaign Excel sheets.
 
