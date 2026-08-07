@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import os
 import json
 
 from pathlib import Path
 from typing import Any, Dict
 
+from campaign_assistant._version import __version__
+
 APP_NAME = "GameBus Campaign Assistant"
 APP_ID = "gamebus_campaign_assistant"
-APP_VERSION = "0.2.1"
+APP_VERSION = __version__
 
 # Paths
 PACKAGE_DIR = Path(__file__).resolve().parent

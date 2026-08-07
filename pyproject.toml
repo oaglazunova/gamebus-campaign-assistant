@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gamebus-campaign-assistant"
-version = "0.2.1"
+dynamic = ["version"]
 description = "A local Streamlit assistant for checking GameBus campaign Excel exports."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -53,6 +53,9 @@ license-files = [
   "THIRD_PARTY_NOTICES.md",
   "licenses/Apache-2.0.txt",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "campaign_assistant._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
