@@ -162,8 +162,7 @@ The current default checks are:
 * `consistency`
 * `visualizationintern`
 * `targetpointsreachable`
-* `textpointsconsistency`
-* `textpointsconsistency` — checks whether participant-facing task text mentions a point value that differs from the exported task points setting;
+* `textpointsconsistency` - checks whether participant-facing task text mentions a point value that differs from the exported task points setting;
 
 Optional checks visible in the check picker include:
 
