@@ -13,21 +13,60 @@ from campaign_assistant.checker.schema import (
 )
 
 
-CHECK_HINTS: dict[str, str] = {
-    SECRETS: "Missing or conflicting SECRET conditions.",
-    SPELLCHECKER: "German-only spellcheck for task and challenge names.",
-    REACHABILITY: "Whether progression visualizations have initial levels that can reach terminal success levels.",
-    CONSISTENCY: "Whether initial/start levels in progression visualizations fail back to themselves.",
-    VISUALIZATIONINTERN: "Whether reachable terminal levels stay within the expected progression visualization and label structure.",
-    TARGETPOINTSREACHABLE: "A challenge target can be reached from its task points and timing settings.",
-    TTMSTRUCTURE: (
-        "HW8 long-term-campaign-specific TTM progression check. "
-        "May report false issues for campaigns with different progression logic."
-    ),
-    TEXTPOINTSCONSISTENCY: "Whether participant-facing task text mentions point values that differ from the exported points setting.",
-    DUPLICATETASKNAMES: "Duplicate task names are reported only when the duplicated tasks have meaningfully different settings.",
-}
+# CHECK_HINTS: dict[str, str] = {
+#     SECRETS: "Missing or conflicting SECRET conditions.",
+#     SPELLCHECKER: "German-only spellcheck for task and challenge names.",
+#     REACHABILITY: "Whether progression visualizations have initial levels that can reach terminal success levels.",
+#     CONSISTENCY: "Whether initial/start levels in progression visualizations fail back to themselves.",
+#     VISUALIZATIONINTERN: "Whether reachable terminal levels stay within the expected progression visualization and label structure.",
+#     TARGETPOINTSREACHABLE: "A challenge target can be reached from its task points and timing settings.",
+#     TTMSTRUCTURE: (
+#         "HW8 long-term-campaign-specific TTM progression check. "
+#         "May report false issues for campaigns with different progression logic."
+#     ),
+#     TEXTPOINTSCONSISTENCY: "Whether participant-facing task text mentions point values that differ from the exported points setting.",
+#     DUPLICATETASKNAMES: "Duplicate task names are reported only when the duplicated tasks have meaningfully different settings.",
+# }
 
+
+CHECK_HINTS: dict[str, str] = {
+    SECRETS: (
+        "Checks whether GameBus Studio tasks have the required secret configuration "
+        "and whether the same secret is reused inconsistently."
+    ),
+    SPELLCHECKER: (
+        "Checks German task and challenge names for possible spelling problems. "
+        "This check is optional and may be slow."
+    ),
+    REACHABILITY: (
+        "Checks whether progression levels can be reached from the configured start "
+        "level and whether the progression can reach its intended end level."
+    ),
+    CONSISTENCY: (
+        "Checks whether the start level has the expected fallback behavior when its "
+        "failure transition is used."
+    ),
+    VISUALIZATIONINTERN: (
+        "Checks whether progression transitions stay within the expected campaign "
+        "track and level structure."
+    ),
+    TARGETPOINTSREACHABLE: (
+        "Checks whether participants can earn enough points to reach each level's "
+        "configured target within its timing and repetition settings."
+    ),
+    TTMSTRUCTURE: (
+        "Checks the progression structure used by the HealthyW8 long-term campaign. "
+        "This is not a general validation of Transtheoretical Model alignment."
+    ),
+    TEXTPOINTSCONSISTENCY: (
+        "Checks whether point values mentioned in participant instructions match "
+        "the points configured for the task."
+    ),
+    DUPLICATETASKNAMES: (
+        "Checks whether tasks with the same participant-facing name have different "
+        "configurations that may indicate an inconsistent copy."
+    ),
+}
 
 PRIORITY_HINT = (
     "Findings are prioritized by priority_score = severity_score + active_wave_boost. "
