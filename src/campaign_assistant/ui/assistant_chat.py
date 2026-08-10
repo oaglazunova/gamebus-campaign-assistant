@@ -179,13 +179,13 @@ def render_assistant_page_status(result: dict[str, Any], message_count: int) -> 
         )
     else:
         st.success(
-            "No issues were found by the selected checks. You can still ask "
+            "No findings were detected by the selected checks. You can still ask "
             "about the analysis result."
         )
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Conversation messages", message_count)
-    c2.metric("Issues", total)
+    c2.metric("Findings", total)
     c3.metric("Checks run", len(checks_run))
 
 
@@ -238,7 +238,7 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
         return
 
     suggestions = [
-        ("Summarize the issues", "summarize_issues"),
+        ("Summarize the findings", "summarize_issues"),
         ("What is the campaign structure?", "campaign_structure"),
         ("What should I inspect first?", "inspect_first"),
         ("Explain the highest-priority findings", "explain_top_findings"),
