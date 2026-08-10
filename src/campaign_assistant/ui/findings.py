@@ -268,9 +268,19 @@ def render_issues_panel(result: dict[str, Any]) -> None:
     filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2])
 
     with filter_col1:
+        severity_options = ["All", "High", "Medium", "Low"]
+
+        has_unclassified_severity = any(
+            _severity(issue) not in {"critical", "high", "medium", "low"}
+            for issue in issues
+        )
+
+        if has_unclassified_severity:
+            severity_options.append("No severity")
+
         severity_filter = st.selectbox(
             "Severity",
-            options=["All", "High", "Medium", "Low", "No severity"],
+            options=severity_options,
             index=0,
             key="findings-severity-filter",
         )
