@@ -38,14 +38,14 @@ THEORY_SPECIFIC_CHECKS = [
 # Checks that are visible in the normal check picker.
 # This list includes optional checks that are intentionally disabled by default.
 CHECK_PICKER_CHECKS = [
-    SECRETS,
-    SPELLCHECKER,
     REACHABILITY,
     CONSISTENCY,
-    VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
+    VISUALIZATIONINTERN,
+    SECRETS,
     TEXTPOINTSCONSISTENCY,
     DUPLICATETASKNAMES,
+    SPELLCHECKER,
     TTMSTRUCTURE,
 ]
 
