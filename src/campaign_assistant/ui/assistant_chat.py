@@ -269,15 +269,11 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
 
 def render_prepared_question_panel() -> None:
     prepared_prompt = st.session_state.get("assistant_prefill_prompt")
-    notice = st.session_state.get("assistant_notice")
 
     if not prepared_prompt:
         return
 
-    st.markdown("### Prepared question from Findings")
-
-    if notice:
-        st.info(str(notice))
+    st.markdown("### Ask about the selected finding")
 
     edited_prompt = st.text_area(
         "Question prepared from Findings",
@@ -297,7 +293,6 @@ def render_prepared_question_panel() -> None:
         ):
             st.session_state["assistant_pending_question"] = edited_prompt
             st.session_state.pop("assistant_prefill_prompt", None)
-            st.session_state.pop("assistant_notice", None)
             st.rerun()
 
     with col2:
@@ -307,7 +302,6 @@ def render_prepared_question_panel() -> None:
             use_container_width=True,
         ):
             st.session_state.pop("assistant_prefill_prompt", None)
-            st.session_state.pop("assistant_notice", None)
             st.session_state.pop("assistant_pending_question", None)
             st.rerun()
 
