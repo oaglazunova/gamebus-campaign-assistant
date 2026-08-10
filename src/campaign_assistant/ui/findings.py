@@ -367,7 +367,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 )
 
                 if st.button(
-                        "Ask Assistant about this",
+                        "Ask Assistant about this finding",
                         key=button_key,
                         use_container_width=False,
                 ):
