@@ -8,7 +8,7 @@ WORKFLOW_PAGE_COPY = {
         "open_label": "Open Overview",
     },
     "Findings": {
-        "description": "Review detected campaign issues, starting with high-priority findings.",
+        "description": "Review detected campaign findings, starting with high-priority findings.",
         "empty": "Analyze a campaign to inspect findings.",
         "open_label": "Open Findings",
     },
@@ -25,11 +25,11 @@ WORKFLOW_PAGE_COPY = {
 
 ASSISTANT_FALLBACK_TEXT = (
     "I can help you with the current campaign analysis. Try one of these prompts:\n\n"
-    "- `Summarize the issues`\n"
-    "- `What should I fix first?`\n"
+    "- `Summarize the findings`\n"
+    "- `What should I inspect first?`\n"
     "- `Which checks failed?`\n"
-    "- `Explain the highest-priority issue`\n"
-    "- `How can I fix target point issues?`\n"
+    "- `Explain the highest-priority finding`\n"
+    "- `How can I fix the point target findings?`\n"
     "- `Does this campaign seem aligned with TTM?`\n"
     "- `How can I make this campaign more COM-B aligned?`\n"
 )

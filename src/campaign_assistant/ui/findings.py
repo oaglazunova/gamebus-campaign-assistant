@@ -237,18 +237,18 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
 
     if total == 0:
         st.success(
-            "No issues were found by the selected checks. This does not prove that "
+            "No findings were detected by the selected checks. This does not prove that "
             "the campaign is theoretically optimal or deployment-ready."
         )
         return
 
     st.warning(
-        "Issues were found. Start with high-priority findings, then review medium- "
-        "and low-priority findings."
+        "Findings were detected. Start with high-priority findings, then review "
+        "medium- and low-priority findings."
     )
 
     if check_counts:
-        with st.expander("Issue counts by check", expanded=False):
+        with st.expander("Finding counts by check", expanded=False):
             for check_id, count in sorted(check_counts.items(), key=lambda item: item[0]):
                 st.markdown(f"- **{_check_label(check_id)}**: {count}")
 

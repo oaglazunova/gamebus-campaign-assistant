@@ -291,7 +291,7 @@ def _render_current_campaign_compact(result: dict[str, Any]) -> None:
 
     issue_cols = st.columns(5)
     issue_cols[0].metric("Checks", len(checks_run))
-    issue_cols[1].metric("Issues", total)
+    issue_cols[1].metric("Findings", total)
     issue_cols[2].metric("High", high)
     issue_cols[3].metric("Medium", medium)
     issue_cols[4].metric("Low", low)
@@ -334,7 +334,9 @@ def _render_next_steps_card(result: dict[str, Any]) -> None:
 
     if total > 0:
         st.markdown(
-            "🔎 Open **Findings** to inspect issues. - ⚠️ Start with **High** priority findings. - 💬 Use **Assistant** to ask what an issue means and how to fix it."
+            "🔎 Open **Findings** to inspect the detected findings. "
+            "- ⚠️ Start with **High** priority findings. "
+            "- 💬 Use **Assistant** when you need more explanation or guidance."
         )
     else:
         st.markdown(
