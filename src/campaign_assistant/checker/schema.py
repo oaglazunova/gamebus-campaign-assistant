@@ -68,15 +68,15 @@ ALL_CHECKS = [
 
 # Human-friendly names for UI display.
 FRIENDLY_CHECK_NAMES = {
-    REACHABILITY: "Reachability",
-    CONSISTENCY: "Consistency",
-    VISUALIZATIONINTERN: "Visualization internals",
-    TARGETPOINTSREACHABLE: "Target points reachable",
-    SECRETS: "Secrets",
-    SPELLCHECKER: "Spellchecker",
-    TTMSTRUCTURE: "TTM structure",
-    TEXTPOINTSCONSISTENCY: "Text vs points consistency",
-    DUPLICATETASKNAMES: "Duplicate task names",
+    REACHABILITY: "Level progression",
+    CONSISTENCY: "Start-level fallback",
+    VISUALIZATIONINTERN: "Cross-track transitions",
+    TARGETPOINTSREACHABLE: "Point target feasibility",
+    SECRETS: "Task secret configuration",
+    SPELLCHECKER: "Spelling",
+    TTMSTRUCTURE: "HW8 progression structure",
+    TEXTPOINTSCONSISTENCY: "Instruction–points consistency",
+    DUPLICATETASKNAMES: "Duplicate task configuration",
 }
 
 # Used for issue prioritization.
