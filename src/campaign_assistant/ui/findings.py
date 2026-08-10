@@ -334,8 +334,13 @@ def render_issues_panel(result: dict[str, Any]) -> None:
     for issue in filtered:
         grouped[str(issue.get("check") or "unknown")].append(issue)
 
+    expand_group = len(grouped) == 1
+
     for check_id, check_issues in grouped.items():
-        with st.expander(f"{_check_label(check_id)} - {len(check_issues)} finding(s)", expanded=True):
+        with st.expander(
+                f"{_check_label(check_id)} - {len(check_issues)} finding(s)",
+                expanded=expand_group,
+        ):
             for idx, issue in enumerate(check_issues, start=1):
                 title = _issue_title(issue)
                 message = _issue_message(issue)
