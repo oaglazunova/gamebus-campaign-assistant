@@ -102,8 +102,8 @@ def _check_label(check_id: str) -> str:
 
 def _location_lines(issue: dict[str, Any]) -> list[str]:
     fields = [
-        ("Sheet", issue.get("sheet")),
-        ("Row", issue.get("row")),
+        # ("Sheet", issue.get("sheet")),
+        # ("Row", issue.get("row")),
         ("Visualization", issue.get("visualization")),
         ("Visualization ID", issue.get("visualization_id")),
         ("Challenge", issue.get("challenge")),
