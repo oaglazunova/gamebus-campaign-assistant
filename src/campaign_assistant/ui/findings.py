@@ -374,7 +374,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                     _store_assistant_prompt_for_issue(issue)
                     st.rerun()
 
-                with st.expander("Raw finding details", expanded=False):
-                    st.json(issue)
+                # with st.expander("Raw finding details", expanded=False):
+                #     st.json(issue)
 
                 st.divider()
