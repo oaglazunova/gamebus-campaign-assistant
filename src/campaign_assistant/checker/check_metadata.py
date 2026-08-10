@@ -31,40 +31,37 @@ from campaign_assistant.checker.schema import (
 
 CHECK_HINTS: dict[str, str] = {
     SECRETS: (
-        "Checks whether GameBus Studio tasks have the required secret configuration "
-        "and whether the same secret is reused inconsistently."
+        "Checks if GameBus Studio tasks have the required secret configuration "
+        "and if the same secret is reused inconsistently."
     ),
     SPELLCHECKER: (
-        "Checks German task and challenge names for possible spelling problems. "
-        "This check is optional and may be slow."
+        "Only for German: checks spelling for task and challenge names. May be slow."
     ),
     REACHABILITY: (
-        "Checks whether progression levels can be reached from the configured start "
-        "level and whether the progression can reach its intended end level."
+        "Checks if progression levels can be reached from the configured start "
+        "level and if the progression can reach its intended end level."
     ),
     CONSISTENCY: (
-        "Checks whether the start level has the expected fallback behavior when its "
-        "failure transition is used."
+        "Checks if initial/start levels in progression visualizations fail back to themselves."
     ),
     VISUALIZATIONINTERN: (
-        "Checks whether progression transitions stay within the expected campaign "
-        "track and level structure."
+        "Checks if progression transitions stay within the expected visualization and level structure."
     ),
     TARGETPOINTSREACHABLE: (
-        "Checks whether participants can earn enough points to reach each level's "
+        "Checks if participants can earn enough points to reach each level's "
         "configured target within its timing and repetition settings."
     ),
     TTMSTRUCTURE: (
-        "Checks the progression structure used by the HealthyW8 long-term campaign. "
-        "This is not a general validation of Transtheoretical Model alignment."
+        "Checks the specific progression used by the HW8 long-term campaign. "
+        "This is not a general validation of TTM alignment."
     ),
     TEXTPOINTSCONSISTENCY: (
-        "Checks whether point values mentioned in participant instructions match "
+        "Checks if point values mentioned in participant instructions match "
         "the points configured for the task."
     ),
     DUPLICATETASKNAMES: (
-        "Checks whether tasks with the same participant-facing name have different "
-        "configurations that may indicate an inconsistent copy."
+        "Checks if tasks with the same participant-facing name have different "
+        "configurations - that may indicate an inconsistent copy."
     ),
 }
 

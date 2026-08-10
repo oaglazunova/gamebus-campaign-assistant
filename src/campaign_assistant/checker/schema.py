@@ -57,6 +57,7 @@ DEFAULT_CHECKS = [
     VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
     TEXTPOINTSCONSISTENCY,
+    DUPLICATETASKNAMES,
 ]
 
 # Complete supported runtime check list.
@@ -68,13 +69,13 @@ ALL_CHECKS = [
 
 # Human-friendly names for UI display.
 FRIENDLY_CHECK_NAMES = {
-    REACHABILITY: "Level progression",
+    REACHABILITY: "Progression levels' reachability",
     CONSISTENCY: "Start-level fallback",
-    VISUALIZATIONINTERN: "Cross-track transitions",
+    VISUALIZATIONINTERN: "Cross-visualization/level transitions",
     TARGETPOINTSREACHABLE: "Point target feasibility",
-    SECRETS: "Task secret configuration",
+    SECRETS: "Task SECRET configuration",
     SPELLCHECKER: "Spelling",
-    TTMSTRUCTURE: "HW8 progression structure",
+    TTMSTRUCTURE: "TTM progression structure for HW8",
     TEXTPOINTSCONSISTENCY: "Instruction–points consistency",
     DUPLICATETASKNAMES: "Duplicate task configuration",
 }
