@@ -79,7 +79,7 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
         verification=_GENERIC_VERIFICATION,
     ),
     SPELLCHECKER: GameBusFixGuidance(
-        title="Fix spelling issues in level and task text",
+        title="Fix spelling in level and task text",
         studio_location=(
             "Open GameBus Studio campaign editor.",
             "Open the relevant campaign, then the visualization/group shown in the finding.",

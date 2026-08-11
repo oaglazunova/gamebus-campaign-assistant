@@ -669,7 +669,7 @@ def _finding_brief_lines(finding: dict[str, Any]) -> list[str]:
 
 
 def _quick_summary_answer(context: dict[str, Any]) -> str:
-	answer = _issue_summary_answer("Summarize the issues", context)
+	answer = _issue_summary_answer("Summarize the findings", context)
 	if answer:
 		return answer
 	return "No issue summary is available in the current context."
@@ -715,7 +715,7 @@ def _priority_reason_answer(context: dict[str, Any]) -> str:
 	rationale = finding.get("priority_rationale")
 
 	lines = [
-		"These issues are ordered by the deterministic priority score.",
+		"These findings are ordered by the deterministic priority score.",
 		"",
 		f"The first item is first because it has severity `{severity}` and belongs to the `{check}` check.",
 	]
@@ -992,7 +992,7 @@ def _quick_explain_top_finding_answer(context: dict[str, Any]) -> str:
 
 def _quick_clean_result_answer(context: dict[str, Any]) -> str:
 	return (
-		"The selected deterministic checks did not report issues. "
+		"The selected deterministic checks found nothing. "
 		"This means the checked structural rules passed for this export. "
 		"It does not prove that the campaign is complete, effective, theory-aligned, "
 		"or free of content/design problems outside the selected checks."
@@ -1106,7 +1106,7 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
 		lines.append("")
 		lines.append(
 			"Ask `How do I fix the highest-priority finding?` "
-			"or `How do I fix the secrets issues?` to see the step-by-step fix guidance."
+			"or `How do I fix the secrets?` to see the step-by-step fix guidance."
 		)
 	else:
 		lines.append("")

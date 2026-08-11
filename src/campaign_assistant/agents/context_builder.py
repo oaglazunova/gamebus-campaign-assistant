@@ -364,7 +364,7 @@ def format_llm_context_markdown(context: dict[str, Any]) -> str:
     lines.append("")
     lines.append("# Analysis summary")
     lines.append(f"- Checks run: {', '.join(str(x) for x in analysis.get('checks_run', []))}")
-    lines.append(f"- Total issues: {analysis.get('total_issues', 0)}")
+    lines.append(f"- Total findings: {analysis.get('total_issues', 0)}")
     lines.append(f"- Failed checks: {', '.join(str(x) for x in analysis.get('failed_checks', [])) or 'None'}")
     lines.append(f"- Errored checks: {', '.join(str(x) for x in analysis.get('errored_checks', [])) or 'None'}")
 
