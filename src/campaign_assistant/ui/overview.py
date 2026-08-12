@@ -69,6 +69,10 @@ def _top_priorities(result: dict[str, Any], limit: int = 5) -> list[str]:
     return labels
 
 
+def _go_to_findings() -> None:
+    st.session_state["requested_workflow_page"] = "Findings"
+    st.rerun()
+
 
 def _render_campaign_snapshot_summary(result: dict[str, Any]) -> None:
     snapshot = _campaign_snapshot(result)
@@ -296,6 +300,11 @@ def _render_current_campaign_compact(result: dict[str, Any]) -> None:
     issue_cols[3].metric("Medium", medium)
     issue_cols[4].metric("Low", low)
 
+    st.caption(
+        "Priority reflects finding severity and campaign timing. "
+        "Findings affecting the active wave receive additional priority."
+    )
+
     if warnings:
         with st.expander("Snapshot extraction warnings", expanded=False):
             for warning in warnings:
@@ -305,14 +314,14 @@ def _render_current_campaign_compact(result: dict[str, Any]) -> None:
 def _render_failed_checks_card(result: dict[str, Any]) -> None:
     failed_checks = _failed_checks(result)
 
-    st.markdown("#### Failed checks")
+    st.markdown("#### Checks with findings")
 
     if failed_checks:
         for check in failed_checks:
             label = FRIENDLY_CHECK_NAMES.get(check, check)
             st.markdown(f"- {label}")
     else:
-        st.caption("No failed checks.")
+        st.caption("No selected checks produced findings.")
 
 
 def _render_top_priorities_card(result: dict[str, Any]) -> None:
@@ -323,25 +332,74 @@ def _render_top_priorities_card(result: dict[str, Any]) -> None:
     if top_priorities:
         for idx, label in enumerate(top_priorities, start=1):
             st.markdown(f"{idx}. {label}")
+
+        if st.button(
+            "View all findings",
+            key="overview-top-priorities-findings",
+            use_container_width=True,
+        ):
+            _go_to_findings()
     else:
         st.caption("No prioritized findings.")
 
 
 def _render_next_steps_card(result: dict[str, Any]) -> None:
-    total, _, _, _ = _summary_counts(result)
+    total, high, medium, low = _summary_counts(result)
 
-    st.markdown("#### Next steps")
+    st.markdown("### Next steps")
 
     if total > 0:
-        st.markdown(
-            "🔎 Open **Findings** to inspect the detected findings. "
-            "- ⚠️ Start with **High** priority findings. "
-            "- 💬 Use **Assistant** when you need more explanation or guidance."
+        st.info(
+            "Review the detected findings before considering the campaign ready. "
+            "Start with high-priority findings, then continue with medium- and "
+            "low-priority findings."
         )
+
+        step_col1, step_col2 = st.columns([3, 1])
+
+        with step_col1:
+            if high > 0:
+                st.markdown(
+                    f"**{high} high-priority finding(s)** should be inspected first. "
+                    f"The analysis also found {medium} medium- and {low} low-priority finding(s)."
+                )
+            else:
+                st.markdown(
+                    f"The analysis found **{total} finding(s)**: "
+                    f"{medium} medium and {low} low priority."
+                )
+
+        with step_col2:
+            if st.button(
+                "Review findings",
+                key="overview-review-findings",
+                type="primary",
+                use_container_width=True,
+            ):
+                _go_to_findings()
+
+        st.caption(
+            "Use the Assistant when you need additional explanation or guidance "
+            "while reviewing a finding."
+        )
+
     else:
-        st.markdown(
-            "✅ Open **Findings** to confirm which checks were run. - 💬 Use **Assistant** for a short interpretation if needed. - 🧭 Remember: clean checks are not proofs of deployment readiness."
+        st.success(
+            "No findings were detected by the selected checks."
         )
+
+        st.markdown(
+            "Review which checks were run and remember that a clean checker result "
+            "does not prove that the campaign is fully ready, theory-aligned, usable, "
+            "or effective."
+        )
+
+        if st.button(
+            "Review checks and findings",
+            key="overview-review-clean-findings",
+            use_container_width=False,
+        ):
+            _go_to_findings()
 
 
 
@@ -350,7 +408,6 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
         st.subheader("Overview")
 
     _render_current_campaign_compact(result)
-    _render_flow_diagram_panel(result)
 
     _render_next_steps_card(result)
 
@@ -361,3 +418,5 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
 
     with col2:
         _render_top_priorities_card(result)
+
+    _render_flow_diagram_panel(result)

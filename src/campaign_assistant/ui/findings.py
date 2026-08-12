@@ -243,6 +243,11 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
         "medium- and low-priority findings."
     )
 
+    st.caption(
+        "Use the filters below to narrow the list. Ask the Assistant when you need "
+        "additional explanation for a specific finding."
+    )
+
     if check_counts:
         with st.expander("Finding counts by check", expanded=False):
             for check_id, count in sorted(check_counts.items(), key=lambda item: item[0]):
