@@ -6,7 +6,10 @@ from typing import Any
 import streamlit as st
 
 from campaign_assistant.checker.gamebus_fix_guidance import gamebus_fix_guidance_markdown_for_issue
-from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
+from campaign_assistant.checker.schema import (
+    CHECK_PICKER_CHECKS,
+    FRIENDLY_CHECK_NAMES,
+)
 from campaign_assistant.checker.check_metadata import PRIORITY_HINT
 
 
@@ -100,16 +103,113 @@ def _check_label(check_id: str) -> str:
     return FRIENDLY_CHECK_NAMES.get(check_id, check_id)
 
 
+def _filter_id(value: Any) -> str:
+    """Normalize Excel-derived IDs for reliable UI filtering."""
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+
+    # Excel/pandas may expose integer IDs as strings such as "123.0".
+    if text.endswith(".0"):
+        try:
+            return str(int(float(text)))
+        except ValueError:
+            pass
+
+    return text
+
+
+def _truncate_label(value: str, max_length: int = 40) -> str:
+    value = value.strip()
+
+    if len(value) <= max_length:
+        return value
+
+    return value[: max_length - 1].rstrip() + "…"
+
+
+def _wave_filter_options(issues: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    waves: dict[str, bool] = {}
+
+    for issue in issues:
+        wave_id = _filter_id(issue.get("wave_id"))
+        if not wave_id:
+            continue
+
+        is_active = bool(issue.get("active_wave"))
+        waves[wave_id] = waves.get(wave_id, False) or is_active
+
+    def _sort_key(item: tuple[str, bool]) -> tuple[int, str]:
+        wave_id, _ = item
+        try:
+            return (0, f"{int(wave_id):010d}")
+        except ValueError:
+            return (1, wave_id.lower())
+
+    options: list[tuple[str, str]] = []
+
+    for wave_id, is_active in sorted(waves.items(), key=_sort_key):
+        label = f"Wave {wave_id}"
+        if is_active:
+            label += " (active)"
+        options.append((wave_id, label))
+
+    return options
+
+
+def _visualization_filter_options(
+    issues: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    visualizations: dict[str, str] = {}
+
+    for issue in issues:
+        visualization_id = _filter_id(issue.get("visualization_id"))
+        visualization_name = str(issue.get("visualization") or "").strip()
+        display_name = _truncate_label(visualization_name)
+
+        if not visualization_id and not visualization_name:
+            continue
+
+        # Prefer the stable ID for filtering.
+        key = visualization_id or visualization_name
+
+        if visualization_name and visualization_id:
+            label = f"{display_name} ({visualization_id})"
+        elif visualization_name:
+            label = display_name
+        else:
+            label = f"Visualization {visualization_id}"
+
+        visualizations[key] = label
+
+    return sorted(
+        visualizations.items(),
+        key=lambda item: item[1].lower(),
+    )
+
+
+
+def _issue_visualization_filter_key(issue: dict[str, Any]) -> str:
+    visualization_id = _filter_id(issue.get("visualization_id"))
+    if visualization_id:
+        return visualization_id
+
+    return str(issue.get("visualization") or "").strip()
+
+
+
+
 def _location_lines(issue: dict[str, Any]) -> list[str]:
     fields = [
         # ("Sheet", issue.get("sheet")),
         # ("Row", issue.get("row")),
         ("Visualization", issue.get("visualization")),
-        ("Visualization ID", issue.get("visualization_id")),
+        # ("Visualization ID", issue.get("visualization_id")),
         ("Challenge", issue.get("challenge")),
         ("Challenge ID", issue.get("challenge_id")),
         ("Wave ID", issue.get("wave_id")),
-        ("URL", issue.get("url")),
+        ("GameBus Studio", issue.get("url")),
     ]
 
     lines: list[str] = []
@@ -261,12 +361,31 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         st.info("No findings to display.")
         return
 
-    checks = sorted({str(issue.get("check") or "unknown") for issue in issues})
+    available_checks = {
+        str(issue.get("check") or "unknown")
+        for issue in issues
+    }
+
+    checks = [
+        check
+        for check in CHECK_PICKER_CHECKS
+        if check in available_checks
+    ]
+
+    checks.extend(
+        sorted(available_checks - set(CHECK_PICKER_CHECKS))
+    )
     check_options = ["All"] + [_check_label(check) for check in checks]
     check_label_to_id = {"All": "All"}
     check_label_to_id.update({_check_label(check): check for check in checks})
 
-    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2])
+    wave_options = _wave_filter_options(issues)
+    wave_labels = dict(wave_options)
+
+    visualization_options = _visualization_filter_options(issues)
+    visualization_labels = dict(visualization_options)
+
+    filter_col1, filter_col2, filter_col3, filter_col4, filter_col5 = st.columns(5)
 
     with filter_col1:
         severity_options = ["All", "High", "Medium", "Low"]
@@ -295,12 +414,36 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         )
 
     with filter_col3:
+        selected_wave = st.selectbox(
+            "Wave",
+            options=[""] + list(wave_labels),
+            format_func=lambda value: (
+                "All waves" if value == "" else wave_labels[value]
+            ),
+            key="findings-wave-filter",
+        )
+
+    with filter_col4:
+        selected_visualization = st.selectbox(
+            "Visualization",
+            options=[""] + list(visualization_labels),
+            format_func=lambda value: (
+                "All visualizations"
+                if value == ""
+                else visualization_labels[value]
+            ),
+            key="findings-visualization-filter",
+        )
+
+    with filter_col5:
         query = st.text_input(
             "Search findings",
             value="",
             key="findings-search-query",
             placeholder="Search by message, challenge, visualization, or check",
         ).strip().lower()
+
+
 
     selected_check = check_label_to_id[selected_check_label]
 
@@ -316,7 +459,25 @@ def render_issues_panel(result: dict[str, Any]) -> None:
             filtered = [issue for issue in filtered if _severity(issue) == selected]
 
     if selected_check != "All":
-        filtered = [issue for issue in filtered if str(issue.get("check") or "unknown") == selected_check]
+        filtered = [
+            issue
+            for issue in filtered
+            if str(issue.get("check") or "unknown") == selected_check
+        ]
+
+    if selected_wave:
+        filtered = [
+            issue
+            for issue in filtered
+            if _filter_id(issue.get("wave_id")) == selected_wave
+        ]
+
+    if selected_visualization:
+        filtered = [
+            issue
+            for issue in filtered
+            if _issue_visualization_filter_key(issue) == selected_visualization
+        ]
 
     if query:
         def _matches(issue: dict[str, Any]) -> bool:
