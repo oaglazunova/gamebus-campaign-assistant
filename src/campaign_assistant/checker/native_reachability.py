@@ -95,6 +95,7 @@ def _issue_from_native(
     visualization: Mapping[str, Any],
     challenge: Mapping[str, Any],
     active_wave_ids: set[str],
+    title: str,
     message: str,
 ) -> Issue:
     wave_id = _normalise_id(visualization.get("wave"))
@@ -108,6 +109,7 @@ def _issue_from_native(
         challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title=title,
         message=message,
         url=_challenge_url(visualization, challenge),
     )
@@ -181,6 +183,7 @@ def run_native_reachability_tables(
                         visualization=visualization,
                         challenge=initial,
                         active_wave_ids=active_wave_ids,
+                        title="No terminal level is reachable from this start level",
                         message=REACHABILITY_INITIAL_ERROR,
                     )
                 )
@@ -197,6 +200,7 @@ def run_native_reachability_tables(
                         visualization=visualization,
                         challenge=terminal,
                         active_wave_ids=active_wave_ids,
+                        title="This terminal level cannot be reached from a start level",
                         message=REACHABILITY_TERMINAL_ERROR,
                     )
                 )

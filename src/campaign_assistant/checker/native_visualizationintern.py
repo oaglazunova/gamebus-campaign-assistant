@@ -154,6 +154,7 @@ def _issue(
     visualization: Mapping[str, Any],
     reachable_challenge: Mapping[str, Any],
     active_wave_ids: set[str],
+    title: str,
     initial_challenge: Mapping[str, Any],
     visualizations: Mapping[str, dict[str, Any]],
 ) -> Issue:
@@ -181,6 +182,7 @@ def _issue(
         challenge_id=_normalise_id(reachable_challenge.get("id")),
         challenge=str(_clean_scalar(reachable_challenge.get("name")) or ""),
         wave_id=wave_id,
+        title="Progression reaches a level outside its visualization or label group",
         message=description,
         url=_challenge_url(visualization, reachable_challenge),
     )

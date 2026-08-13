@@ -106,6 +106,7 @@ class Issue:
     wave_id: Any
     message: str
     url: str
+    title: str = ""
 
     @property
     def priority_score(self) -> int:
@@ -125,6 +126,7 @@ class Issue:
             "challenge_id": self.challenge_id,
             "challenge": self.challenge,
             "wave_id": self.wave_id,
+            "title": self.title or self.message,
             "message": self.message,
             "url": self.url,
             "priority_score": self.priority_score,

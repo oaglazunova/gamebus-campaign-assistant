@@ -122,6 +122,7 @@ def run_native_duplicatetasknames_tables(
                 challenge_id=_normalise_id(challenge.get("id")),
                 challenge=str(_clean_scalar(challenge.get("name")) or ""),
                 wave_id=wave_id,
+                title="Duplicate task names have different settings",
                 message=(
                     f"Task name '{task_name}' is reused for tasks with different settings. "
                     "This check only reports duplicate names when the duplicated tasks differ in meaningful fields "
