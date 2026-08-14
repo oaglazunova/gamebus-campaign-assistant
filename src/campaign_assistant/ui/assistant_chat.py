@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
-import os
 import hashlib
+import os
 
 from typing import Any
 
@@ -11,22 +11,55 @@ from campaign_assistant.agents.context_builder import (
     build_llm_context,
     format_llm_context_markdown,
 )
-from campaign_assistant.agents.assistant_coordinator import AssistantCoordinator
 from campaign_assistant.llm import create_llm_client, llm_enabled
+from campaign_assistant.agents.assistant_coordinator import (
+    AssistantCoordinator,
+    AssistantResponse,
+)
 
 
+_AGENT_PRESENTATION = {
+    "campaign_support_agent": (
+        "Campaign Support Agent",
+        "🔧",
+    ),
+    "theory_support_agent": (
+        "Theory Support Agent",
+        "📚",
+    ),
+}
 
-def _friendly_agent_name(agent_name: str) -> str:
-    labels = {
-        "campaign_support_agent": "Campaign Support Agent",
-        "theory_support_agent": "Theory Support Agent",
-    }
-    return labels.get(agent_name, agent_name)
+
+def _agent_presentation(
+    agent_name: str | None,
+) -> tuple[str, str]:
+    return _AGENT_PRESENTATION.get(
+        str(agent_name or ""),
+        ("Assistant", "🤖"),
+    )
 
 
-def _show_routing_footer() -> bool:
-    value = os.getenv("CAMPAIGN_ASSISTANT_SHOW_ROUTING", "true").strip().lower()
-    return value not in {"0", "false", "no", "off"}
+def render_conversation_message(
+    message: dict[str, Any],
+) -> None:
+    role = str(message.get("role") or "assistant")
+    content = str(message.get("content") or "")
+
+    if role == "user":
+        with st.chat_message("user"):
+            st.markdown(content)
+        return
+
+    label, avatar = _agent_presentation(
+        message.get("agent_name")
+    )
+
+    with st.chat_message(
+        "assistant",
+        avatar=avatar,
+    ):
+        st.caption(label)
+        st.markdown(content)
 
 
 def quick_action_focuses_top_finding(action: str | None) -> bool:
@@ -271,30 +304,53 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
 
 
 
-def answer_question(
+def get_assistant_response(
     user_question: str,
     result: dict[str, Any],
     *,
     conversation_history: list[dict[str, str]] | None = None,
     quick_action: str | None = None,
     focused_finding: dict[str, Any] | None = None,
-) -> str:
+) -> AssistantResponse:
     if not result:
-        return (
-            "No campaign has been analyzed yet. Analyze a campaign first, "
-            "then ask about the findings."
+        return AssistantResponse(
+            text=(
+                "No campaign has been analyzed yet. Analyze a campaign "
+                "first, then ask about the findings."
+            ),
+            agent_name="campaign_support_agent",
+            intent="campaign_support",
+            routing_reason="No campaign result is available.",
+            answer_source="no_analysis",
         )
 
-    q = user_question.strip().lower()
+    normalized_question = user_question.strip().lower()
 
-    # Developer/debug hook. Keep this typed-only; do not add a visible button.
-    if any(term in q for term in ["assistant context", "llm context", "agent context", "prompt context"]):
+    if any(
+        term in normalized_question
+        for term in (
+            "assistant context",
+            "llm context",
+            "agent context",
+            "prompt context",
+        )
+    ):
         context = build_llm_context(result)
-        return format_llm_context_markdown(context)
+
+        return AssistantResponse(
+            text=format_llm_context_markdown(context),
+            agent_name="campaign_support_agent",
+            intent="developer_context",
+            routing_reason="Developer context requested explicitly.",
+            answer_source="deterministic_context",
+        )
 
     try:
-        coordinator = AssistantCoordinator(llm_client=create_llm_client())
-        response = coordinator.answer(
+        coordinator = AssistantCoordinator(
+            llm_client=create_llm_client()
+        )
+
+        return coordinator.answer(
             question=user_question,
             result=result,
             conversation_history=(
@@ -306,30 +362,50 @@ def answer_question(
             focused_finding=(
                 focused_finding
                 if focused_finding is not None
-                else st.session_state.get("assistant_focused_finding")
+                else st.session_state.get(
+                    "assistant_focused_finding"
+                )
             ),
         )
 
-        if not _show_routing_footer():
-            return response.text
-
-        friendly_agent = _friendly_agent_name(response.agent_name)
-        guard_note = ""
-        if getattr(response, "guard_applied", False):
-            guard_note = f" Response guard applied: `{response.guard_reason}`."
-
-        return (
-            response.text
-            + "\n\n---\n"
-            + f"_Assistant route: `{response.intent}` via **{friendly_agent}**. "
-            + f"Source: `{response.answer_source}`.{guard_note}_"
-        )
-
     except Exception as exc:
-        return (
-            "The assistant could not process this question because an internal error occurred.\n\n"
-            f"Error: `{exc}`"
+        logger = st.session_state.get("logger")
+        if logger is not None:
+            logger.log_error(
+                where="get_assistant_response",
+                exc=exc,
+            )
+
+        return AssistantResponse(
+            text=(
+                "The Assistant could not process this question because "
+                "an internal error occurred. Please try again."
+            ),
+            agent_name="campaign_support_agent",
+            intent="internal_error",
+            routing_reason="Assistant processing raised an exception.",
+            answer_source="internal_error",
+            guard_applied=False,
+            guard_reason=None,
         )
+
+
+def answer_question(
+    user_question: str,
+    result: dict[str, Any],
+    *,
+    conversation_history: list[dict[str, str]] | None = None,
+    quick_action: str | None = None,
+    focused_finding: dict[str, Any] | None = None,
+) -> str:
+    """Compatibility wrapper for callers that only need answer text."""
+    return get_assistant_response(
+        user_question,
+        result,
+        conversation_history=conversation_history,
+        quick_action=quick_action,
+        focused_finding=focused_finding,
+    ).text
 
 
 def _finding_dialog_key(
@@ -423,8 +499,7 @@ def render_finding_assistant_dialog(
             )
 
         for message in messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+            render_conversation_message(message)
 
     quick_question = None
 
@@ -463,32 +538,44 @@ def render_finding_assistant_dialog(
 
     conversation_history = list(messages)
 
-    messages.append({
+    user_message = {
         "role": "user",
         "content": question,
-    })
+    }
+
+    messages.append(user_message)
     _log_finding_dialog_message("user", question)
 
     if empty_state is not None:
         empty_state.empty()
 
-    with history:
-        with st.chat_message("user"):
-            st.markdown(question)
+    with st.spinner("Preparing an answer..."):
+        response = get_assistant_response(
+            question,
+            result,
+            conversation_history=conversation_history,
+            focused_finding=finding,
+        )
 
-        with st.chat_message("assistant"):
-            with st.spinner("Preparing an answer..."):
-                answer = answer_question(
-                    question,
-                    result,
-                    conversation_history=conversation_history,
-                    focused_finding=finding,
-                )
-
-            st.markdown(answer)
-
-    messages.append({
+    assistant_message = {
         "role": "assistant",
-        "content": answer,
-    })
-    _log_finding_dialog_message("assistant", answer)
+        "content": response.text,
+        "agent_name": response.agent_name,
+    }
+
+    messages.append(assistant_message)
+
+    logger = st.session_state.get("logger")
+    if logger is not None:
+        logger.log_chat_assistant(
+            response.text,
+            agent_name=response.agent_name,
+            intent=response.intent,
+            answer_source=response.answer_source,
+            guard_applied=response.guard_applied,
+            guard_reason=response.guard_reason,
+        )
+
+    with history:
+        render_conversation_message(user_message)
+        render_conversation_message(assistant_message)

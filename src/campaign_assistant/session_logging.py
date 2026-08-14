@@ -163,8 +163,27 @@ class SessionLogger:
     def log_chat_user(self, message: str) -> None:
         self.log("chat_user_message", {"message": message})
 
-    def log_chat_assistant(self, message: str) -> None:
-        self.log("chat_assistant_message", {"message": message})
+    def log_chat_assistant(
+            self,
+            message: str,
+            *,
+            agent_name: str | None = None,
+            intent: str | None = None,
+            answer_source: str | None = None,
+            guard_applied: bool = False,
+            guard_reason: str | None = None,
+    ) -> None:
+        self.log(
+            "chat_assistant_message",
+            {
+                "message": message,
+                "agent_name": agent_name,
+                "intent": intent,
+                "answer_source": answer_source,
+                "guard_applied": guard_applied,
+                "guard_reason": guard_reason,
+            },
+        )
 
     def log_error(
         self,

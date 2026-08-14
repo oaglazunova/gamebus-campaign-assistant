@@ -7,7 +7,8 @@ from campaign_assistant.file_utils import sha256_file
 from campaign_assistant.storage import add_saved_campaign_abbreviation, get_cookie_file, load_password
 from campaign_assistant.ui.actions import run_analysis, save_uploaded_file
 from campaign_assistant.ui.assistant_chat import (
-	answer_question,
+	get_assistant_response,
+	render_conversation_message,
 	focused_finding_for_quick_action,
 	quick_action_focuses_top_finding,
 	render_assistant_guide_panel,
@@ -275,16 +276,30 @@ def _handle_pending_assistant_prompt(logger, result) -> None:
 
 	st.session_state.messages.append({"role": "user", "content": pending})
 
-	answer = answer_question(
+	response = get_assistant_response(
 		pending,
 		result,
 		conversation_history=conversation_history,
 		quick_action=quick_action,
-		focused_finding=st.session_state.get("assistant_focused_finding"),
+		focused_finding=st.session_state.get(
+			"assistant_focused_finding"
+		),
 	)
 
-	logger.log_chat_assistant(answer)
-	st.session_state.messages.append({"role": "assistant", "content": answer})
+	logger.log_chat_assistant(
+		response.text,
+		agent_name=response.agent_name,
+		intent=response.intent,
+		answer_source=response.answer_source,
+		guard_applied=response.guard_applied,
+		guard_reason=response.guard_reason,
+	)
+
+	st.session_state.messages.append({
+		"role": "assistant",
+		"content": response.text,
+		"agent_name": response.agent_name,
+	})
 
 	st.rerun()
 
@@ -322,8 +337,7 @@ def _render_assistant_page(logger) -> None:
 	else:
 		st.markdown("### Conversation")
 		for message in st.session_state.messages:
-			with st.chat_message(message["role"]):
-				st.markdown(message["content"])
+			render_conversation_message(message)
 
 	user_question = st.chat_input("Ask about this campaign...")
 
@@ -333,15 +347,30 @@ def _render_assistant_page(logger) -> None:
 		logger.log_chat_user(user_question)
 		st.session_state.messages.append({"role": "user", "content": user_question})
 
-		answer = answer_question(
+		response = get_assistant_response(
 			user_question,
 			result,
 			conversation_history=conversation_history,
-			focused_finding=st.session_state.get("assistant_focused_finding"),
+			focused_finding=st.session_state.get(
+				"assistant_focused_finding"
+			),
 		)
 
-		logger.log_chat_assistant(answer)
-		st.session_state.messages.append({"role": "assistant", "content": answer})
+		logger.log_chat_assistant(
+			response.text,
+			agent_name=response.agent_name,
+			intent=response.intent,
+			answer_source=response.answer_source,
+			guard_applied=response.guard_applied,
+			guard_reason=response.guard_reason,
+		)
+
+		st.session_state.messages.append({
+			"role": "assistant",
+			"content": response.text,
+			"agent_name": response.agent_name,
+		})
+
 		st.rerun()
 
 
