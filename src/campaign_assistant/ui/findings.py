@@ -14,6 +14,9 @@ from campaign_assistant.checker.schema import (
     FRIENDLY_CHECK_NAMES,
 )
 from campaign_assistant.checker.check_metadata import PRIORITY_HINT
+from campaign_assistant.ui.assistant_chat import (
+    render_finding_assistant_dialog,
+)
 
 
 _QUOTED_VALUE_PATTERN = re.compile(r"'([^'\n]+)'")
@@ -286,12 +289,6 @@ def _location_lines(issue: dict[str, Any]) -> list[str]:
         escaped = str(value).replace("`", r"\`")
         return f"`{escaped}`"
 
-    ("Wave", issue.get("wave_id")),
-    ("Visualization", issue.get("visualization")),
-    ("Visualization ID", issue.get("visualization_id")),
-    ("Challenge", issue.get("challenge")),
-    ("Challenge ID", issue.get("challenge_id")),
-
     fields = [
         (
             "Visualization",
@@ -325,61 +322,19 @@ def _location_lines(issue: dict[str, Any]) -> list[str]:
 
     return lines
 
-
-def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
-    title = _issue_title(issue)
-    severity = _severity(issue)
-    check = str(issue.get("check") or "unknown")
-
-    parts = [
-        "Explain this campaign finding.",
-        "",
-        f"Check: {check}",
-        f"Severity: {severity}",
-        f"Finding: {title}",
-    ]
-
-    message = _issue_message(issue)
-    if message:
-        parts.append(f"Message: {message}")
-
-    visualization = issue.get("visualization")
-    if visualization:
-        parts.append(f"Visualization: {visualization}")
-
-    challenge = issue.get("challenge")
-    if challenge:
-        parts.append(f"Challenge: {challenge}")
-
-    challenge_id = issue.get("challenge_id")
-    if challenge_id not in (None, ""):
-        parts.append(f"Challenge ID: {challenge_id}")
-
-    wave_id = issue.get("wave_id")
-    if wave_id not in (None, ""):
-        parts.append(f"Wave ID: {wave_id}")
-
-    return "\n".join(parts)
-
-
-def _store_assistant_prompt_for_issue(issue: dict[str, Any]) -> None:
+def _focused_finding(
+    issue: dict[str, Any],
+) -> dict[str, Any]:
     focused_finding = dict(issue)
 
     fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+
     if fix_guidance:
-        focused_finding["deterministic_gamebus_fix_guidance"] = fix_guidance
+        focused_finding[
+            "deterministic_gamebus_fix_guidance"
+        ] = fix_guidance
 
-    st.session_state["assistant_focused_finding"] = focused_finding
-    st.session_state["assistant_prefill_prompt"] = _assistant_prompt_for_issue(issue)
-
-    st.session_state["requested_workflow_page"] = "Assistant"
-
-    try:
-        st.query_params["page"] = "assistant"
-    except Exception:
-        pass
-
-
+    return focused_finding
 
 
 def _severity_badge(severity: str) -> str:
@@ -656,8 +611,11 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                         key=button_key,
                         use_container_width=False,
                 ):
-                    _store_assistant_prompt_for_issue(issue)
-                    st.rerun()
+                    render_finding_assistant_dialog(
+                        result,
+                        _focused_finding(issue),
+                        heading,
+                    )
 
                 # with st.expander("Raw finding details", expanded=False):
                 #     st.json(issue)

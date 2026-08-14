@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import os
+import hashlib
+
 from typing import Any
 
 import streamlit as st
@@ -267,44 +269,6 @@ def render_assistant_guide_panel(result: dict[str, Any]) -> None:
                 st.rerun()
 
 
-def render_prepared_question_panel() -> None:
-    prepared_prompt = st.session_state.get("assistant_prefill_prompt")
-
-    if not prepared_prompt:
-        return
-
-    st.markdown("### Ask about the selected finding")
-
-    edited_prompt = st.text_area(
-        "Question prepared from Findings",
-        value=str(prepared_prompt),
-        height=180,
-        key="assistant-prepared-question-editor",
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button(
-            "Use this question",
-            key="assistant-use-prepared-question",
-            type="primary",
-            use_container_width=True,
-        ):
-            st.session_state["assistant_pending_question"] = edited_prompt
-            st.session_state.pop("assistant_prefill_prompt", None)
-            st.rerun()
-
-    with col2:
-        if st.button(
-            "Clear prepared question",
-            key="assistant-clear-prepared-question",
-            use_container_width=True,
-        ):
-            st.session_state.pop("assistant_prefill_prompt", None)
-            st.session_state.pop("assistant_pending_question", None)
-            st.rerun()
-
 
 
 def answer_question(
@@ -366,3 +330,165 @@ def answer_question(
             "The assistant could not process this question because an internal error occurred.\n\n"
             f"Error: `{exc}`"
         )
+
+
+def _finding_dialog_key(
+    result: dict[str, Any],
+    finding: dict[str, Any],
+) -> str:
+    request_id = _assistant_meta(result).get("request_id") or "current-analysis"
+
+    identity = "\x1f".join(
+        str(value or "")
+        for value in (
+            request_id,
+            finding.get("check"),
+            finding.get("visualization_id"),
+            finding.get("challenge_id"),
+            finding.get("message"),
+        )
+    )
+
+    return hashlib.sha256(
+        identity.encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def _reset_finding_dialog_conversation() -> None:
+    st.session_state["finding_assistant_messages"] = []
+
+
+def _log_finding_dialog_message(
+    role: str,
+    content: str,
+) -> None:
+    logger = st.session_state.get("logger")
+
+    if logger is None:
+        return
+
+    if role == "user":
+        logger.log_chat_user(content)
+    else:
+        logger.log_chat_assistant(content)
+
+
+@st.dialog("Assistant for this finding", width="large")
+def render_finding_assistant_dialog(
+    result: dict[str, Any],
+    finding: dict[str, Any],
+    heading: str,
+) -> None:
+    thread_key = _finding_dialog_key(result, finding)
+
+    if st.session_state.get("finding_assistant_key") != thread_key:
+        st.session_state["finding_assistant_key"] = thread_key
+        st.session_state["finding_assistant_messages"] = []
+
+    messages = st.session_state.setdefault(
+        "finding_assistant_messages",
+        [],
+    )
+
+    st.markdown(f"**{heading}**")
+
+    location_parts: list[str] = []
+
+    if finding.get("visualization"):
+        location_parts.append(
+            f"Visualization: {finding['visualization']}"
+        )
+
+    if finding.get("challenge"):
+        location_parts.append(
+            f"Challenge: {finding['challenge']}"
+        )
+
+    if location_parts:
+        st.caption(" · ".join(location_parts))
+
+    st.caption(
+        "The Assistant already has the selected finding and campaign "
+        "context. Ask for an explanation or a more specific next step."
+    )
+
+    history = st.container(height=360)
+    empty_state = None
+
+    with history:
+        if not messages:
+            empty_state = st.info(
+                "No conversation about this finding yet. "
+                "Choose a question below or write your own."
+            )
+
+        for message in messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    quick_question = None
+
+    quick_questions = (
+        "What does this finding mean?",
+        "What should I inspect first?",
+        "Could this finding be intentional?",
+    )
+
+    columns = st.columns(len(quick_questions))
+
+    for index, question in enumerate(quick_questions):
+        with columns[index]:
+            if st.button(
+                question,
+                key=f"finding-assistant-quick-{thread_key}-{index}",
+                use_container_width=True,
+            ):
+                quick_question = question
+
+    user_question = st.chat_input(
+        "Ask a follow-up question...",
+        key=f"finding-assistant-input-{thread_key}",
+    )
+
+    question = quick_question or user_question
+
+    st.button(
+        "Clear conversation",
+        key=f"finding-assistant-clear-{thread_key}",
+        on_click=_reset_finding_dialog_conversation,
+    )
+
+    if not question:
+        return
+
+    conversation_history = list(messages)
+
+    messages.append({
+        "role": "user",
+        "content": question,
+    })
+    _log_finding_dialog_message("user", question)
+
+    if empty_state is not None:
+        empty_state.empty()
+
+    with history:
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Preparing an answer..."):
+                answer = answer_question(
+                    question,
+                    result,
+                    conversation_history=conversation_history,
+                    focused_finding=finding,
+                )
+
+            st.markdown(answer)
+
+    messages.append({
+        "role": "assistant",
+        "content": answer,
+    })
+    _log_finding_dialog_message("assistant", answer)

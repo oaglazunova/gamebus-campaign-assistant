@@ -13,7 +13,6 @@ from campaign_assistant.ui.assistant_chat import (
 	render_assistant_guide_panel,
 	render_assistant_page_status,
 	render_llm_status_panel,
-	render_prepared_question_panel,
 )
 from campaign_assistant.ui.findings import (
 	render_findings_overview_panel,
@@ -310,7 +309,6 @@ def _render_assistant_page(logger) -> None:
 			st.session_state.pop("assistant_focused_finding", None)
 			st.session_state.pop("assistant_pending_quick_action", None)
 			st.session_state.pop("assistant_pending_question", None)
-			st.session_state.pop("assistant_prefill_prompt", None)
 			st.session_state.pop("assistant_notice", None)
 			st.rerun()
 
@@ -318,16 +316,14 @@ def _render_assistant_page(logger) -> None:
 
 	if not st.session_state.messages:
 		st.info(
-			"No assistant conversation yet. Use a suggested prompt, send a prepared question "
-			"from Findings, or ask your own question below."
+			"No assistant conversation yet. Use a suggested prompt or ask "
+			"your own question below."
 		)
 	else:
 		st.markdown("### Conversation")
 		for message in st.session_state.messages:
 			with st.chat_message(message["role"]):
 				st.markdown(message["content"])
-
-	render_prepared_question_panel()
 
 	user_question = st.chat_input("Ask about this campaign...")
 
