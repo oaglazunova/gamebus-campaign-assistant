@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from typing import Any
+from collections.abc import Iterable
 
 import streamlit as st
 
@@ -103,6 +104,22 @@ def _check_label(check_id: str) -> str:
     return FRIENDLY_CHECK_NAMES.get(check_id, check_id)
 
 
+def _ordered_check_ids(check_ids: Iterable[str]) -> list[str]:
+    available = {str(check_id) for check_id in check_ids}
+
+    ordered = [
+        check_id
+        for check_id in CHECK_PICKER_CHECKS
+        if check_id in available
+    ]
+
+    ordered.extend(
+        sorted(available - set(CHECK_PICKER_CHECKS))
+    )
+
+    return ordered
+
+
 def _filter_id(value: Any) -> str:
     """Normalize Excel-derived IDs for reliable UI filtering."""
     if value is None:
@@ -202,23 +219,40 @@ def _issue_visualization_filter_key(issue: dict[str, Any]) -> str:
 
 def _location_lines(issue: dict[str, Any]) -> list[str]:
     fields = [
-        # ("Sheet", issue.get("sheet")),
-        # ("Row", issue.get("row")),
         ("Visualization", issue.get("visualization")),
-        # ("Visualization ID", issue.get("visualization_id")),
         ("Challenge", issue.get("challenge")),
-        ("Challenge ID", issue.get("challenge_id")),
         ("Wave ID", issue.get("wave_id")),
-        ("GameBus Studio", issue.get("url")),
     ]
 
     lines: list[str] = []
+
     for label, value in fields:
         if value is None or value == "":
             continue
+
         lines.append(f"**{label}:** {value}")
 
     return lines
+
+
+def _technical_detail_lines(issue: dict[str, Any]) -> list[str]:
+    fields = [
+        ("Check ID", issue.get("check")),
+        ("Visualization ID", issue.get("visualization_id")),
+        ("Challenge ID", issue.get("challenge_id")),
+        # ("Wave ID", issue.get("wave_id")),
+    ]
+
+    lines: list[str] = []
+
+    for label, value in fields:
+        if value is None or value == "":
+            continue
+
+        lines.append(f"**{label}:** `{value}`")
+
+    return lines
+
 
 
 def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
@@ -350,8 +384,10 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
 
     if check_counts:
         with st.expander("Finding counts by check", expanded=False):
-            for check_id, count in sorted(check_counts.items(), key=lambda item: item[0]):
-                st.markdown(f"- **{_check_label(check_id)}**: {count}")
+            for check_id in _ordered_check_ids(check_counts):
+                st.markdown(
+                    f"- **{_check_label(check_id)}**: {check_counts[check_id]}"
+                )
 
 
 def render_issues_panel(result: dict[str, Any]) -> None:
@@ -366,15 +402,8 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         for issue in issues
     }
 
-    checks = [
-        check
-        for check in CHECK_PICKER_CHECKS
-        if check in available_checks
-    ]
+    checks = _ordered_check_ids(available_checks)
 
-    checks.extend(
-        sorted(available_checks - set(CHECK_PICKER_CHECKS))
-    )
     check_options = ["All"] + [_check_label(check) for check in checks]
     check_label_to_id = {"All": "All"}
     check_label_to_id.update({_check_label(check): check for check in checks})
@@ -498,7 +527,9 @@ def render_issues_panel(result: dict[str, Any]) -> None:
 
     expand_group = len(grouped) == 1
 
-    for check_id, check_issues in grouped.items():
+    for check_id in _ordered_check_ids(grouped):
+        check_issues = grouped[check_id]
+
         with st.expander(
                 f"{_check_label(check_id)} - {len(check_issues)} finding(s)",
                 expanded=expand_group,
@@ -516,6 +547,21 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 location = _location_lines(issue)
                 if location:
                     st.markdown("\n".join(f"- {line}" for line in location))
+
+                studio_url = str(issue.get("url") or "").strip()
+                if studio_url:
+                    st.link_button(
+                        "Open in GameBus Studio",
+                        studio_url,
+                    )
+
+                technical_details = _technical_detail_lines(issue)
+                if technical_details:
+                    with st.expander("Technical details", expanded=False):
+                        st.markdown(
+                            "\n".join(f"- {line}" for line in technical_details)
+                        )
+
 
                 fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
                 if fix_guidance:
