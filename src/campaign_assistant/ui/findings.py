@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+import re
+
 from collections import defaultdict
 from typing import Any
 from collections.abc import Iterable
@@ -12,6 +14,20 @@ from campaign_assistant.checker.schema import (
     FRIENDLY_CHECK_NAMES,
 )
 from campaign_assistant.checker.check_metadata import PRIORITY_HINT
+
+
+_QUOTED_VALUE_PATTERN = re.compile(r"'([^'\n]+)'")
+
+
+def _format_meaningful_values(text: str) -> str:
+    def _replacement(match: re.Match[str]) -> str:
+        value = match.group(1).replace("`", r"\`")
+        return f"`{value}`"
+
+    return _QUOTED_VALUE_PATTERN.sub(
+        _replacement,
+        str(text or ""),
+    )
 
 
 def _summary(result: dict[str, Any]) -> dict[str, Any]:
@@ -76,6 +92,31 @@ def _severity_rank(issue: dict[str, Any]) -> int:
     return 3
 
 
+def _severity_indicator(severity: str) -> str:
+    severity = severity.lower()
+
+    if severity in {"critical", "high"}:
+        return "🔴"
+    if severity == "medium":
+        return "🟠"
+    if severity == "low":
+        return "🟡"
+
+    return "⚪"
+
+
+def _severity_badge(severity: str) -> str:
+    label = {
+        "critical": "High",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+    }.get(severity.lower(), "No severity")
+
+    return f"{_severity_indicator(severity)} {label}"
+
+
+
 def _issue_title(issue: dict[str, Any]) -> str:
     return str(
         issue.get("title")
@@ -84,6 +125,29 @@ def _issue_title(issue: dict[str, Any]) -> str:
         or issue.get("issue")
         or "Finding"
     )
+
+
+def _issue_heading_and_details(
+    issue: dict[str, Any],
+) -> tuple[str, str]:
+    message = _issue_message(issue).strip()
+
+    if not message:
+        return _issue_title(issue).strip(), ""
+
+    # Prefer a sentence boundary; multiline findings may use the first line.
+    boundary = re.search(
+        r"(?<=[.!?])\s+|\n+",
+        message,
+    )
+
+    if boundary is None:
+        return message.rstrip(), ""
+
+    heading = message[:boundary.start()].strip()
+    details = message[boundary.end():].strip()
+
+    return heading, details
 
 
 def _issue_message(issue: dict[str, Any]) -> str:
@@ -221,7 +285,7 @@ def _location_lines(issue: dict[str, Any]) -> list[str]:
     fields = [
         ("Visualization", issue.get("visualization")),
         ("Challenge", issue.get("challenge")),
-        ("Wave ID", issue.get("wave_id")),
+        ("Wave", issue.get("wave_id")),
     ]
 
     lines: list[str] = []
@@ -230,7 +294,8 @@ def _location_lines(issue: dict[str, Any]) -> list[str]:
         if value is None or value == "":
             continue
 
-        lines.append(f"**{label}:** {value}")
+        formatted_value = str(value).replace("`", r"\`")
+        lines.append(f"**{label}:** `{formatted_value}`")
 
     return lines
 
@@ -530,19 +595,33 @@ def render_issues_panel(result: dict[str, Any]) -> None:
     for check_id in _ordered_check_ids(grouped):
         check_issues = grouped[check_id]
 
+        group_severity = _severity(
+            min(check_issues, key=_severity_rank)
+        )
+        group_badge = _severity_badge(group_severity)
+
         with st.expander(
-                f"{_check_label(check_id)} - {len(check_issues)} finding(s)",
+                (
+                        f"{group_badge} - {_check_label(check_id)}: "
+                        f"{len(check_issues)} finding(s)"
+                ),
                 expanded=expand_group,
         ):
             for idx, issue in enumerate(check_issues, start=1):
-                title = _issue_title(issue)
-                message = _issue_message(issue)
+                heading, details = _issue_heading_and_details(issue)
                 severity = _severity(issue)
 
-                st.markdown(f"#### {idx}. {_severity_badge(severity)} - {title}")
+                formatted_heading = _format_meaningful_values(heading)
 
-                if message:
-                    st.write(message)
+                st.markdown(
+                    f"#### {idx}. {_severity_indicator(severity)} "
+                    f"{formatted_heading}"
+                )
+
+                if details:
+                    st.markdown(
+                        _format_meaningful_values(details)
+                    )
 
                 location = _location_lines(issue)
                 if location:

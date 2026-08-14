@@ -7,7 +7,11 @@ import re
 import streamlit as st
 import streamlit.components.v1 as components
 
-from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
+from campaign_assistant.checker.schema import (
+    CHECK_PICKER_CHECKS,
+    FRIENDLY_CHECK_NAMES,
+    SEVERITY_BY_CHECK,
+)
 from campaign_assistant.diagram import build_campaign_flow_svg
 from campaign_assistant.checker.check_metadata import PRIORITY_HINT
 
@@ -48,25 +52,81 @@ def _failed_checks(result: dict[str, Any]) -> list[str]:
     return []
 
 
-def _top_priorities(result: dict[str, Any], limit: int = 5) -> list[str]:
-    issues = result.get("prioritized_issues", []) or []
-    labels: list[str] = []
+def _severity_indicator(severity: str) -> str:
+    severity = str(severity or "").lower()
 
-    for item in issues[:limit]:
-        if not isinstance(item, dict):
-            continue
+    if severity == "high":
+        return "🔴 High"
+    if severity == "medium":
+        return "🟠 Medium"
+    if severity == "low":
+        return "🟡 Low"
 
-        label = (
-            item.get("title")
-            or item.get("message")
-            or item.get("description")
-            or item.get("issue")
-            or item.get("check")
-            or "Finding"
+    return "⚪ No severity"
+
+
+def _ordered_checks_with_findings(
+    result: dict[str, Any],
+) -> list[str]:
+    summary = dict(result.get("summary", {}) or {})
+    counts = dict(summary.get("issue_count_by_check", {}) or {})
+
+    available = {
+        str(check_id)
+        for check_id, count in counts.items()
+        if int(count or 0) > 0
+    }
+
+    # Preserve failed checks if an older result lacks complete count data.
+    available.update(_failed_checks(result))
+
+    order = {
+        check_id: index
+        for index, check_id in enumerate(CHECK_PICKER_CHECKS)
+    }
+    severity_order = {
+        "high": 0,
+        "medium": 1,
+        "low": 2,
+    }
+
+    return sorted(
+        available,
+        key=lambda check_id: (
+            severity_order.get(
+                SEVERITY_BY_CHECK.get(check_id, ""),
+                3,
+            ),
+            order.get(check_id, len(order)),
+            check_id,
+        ),
+    )
+
+
+def _render_findings_by_check_card(
+    result: dict[str, Any],
+) -> None:
+    summary = dict(result.get("summary", {}) or {})
+    counts = dict(summary.get("issue_count_by_check", {}) or {})
+    checks = _ordered_checks_with_findings(result)
+
+    st.markdown("#### Findings by check")
+
+    if not checks:
+        st.caption("No selected checks produced findings.")
+        return
+
+    for check_id in checks:
+        label = FRIENDLY_CHECK_NAMES.get(check_id, check_id)
+        severity = SEVERITY_BY_CHECK.get(check_id, "")
+        count = int(counts.get(check_id, 0) or 0)
+        count_label = "finding" if count == 1 else "findings"
+
+        st.markdown(
+            f"- {_severity_indicator(severity)} — "
+            f"**{label}** — {count} {count_label}"
         )
-        labels.append(str(label))
 
-    return labels
 
 
 def _go_to_findings() -> None:
@@ -311,38 +371,6 @@ def _render_current_campaign_compact(result: dict[str, Any]) -> None:
                 st.warning(str(warning))
 
 
-def _render_failed_checks_card(result: dict[str, Any]) -> None:
-    failed_checks = _failed_checks(result)
-
-    st.markdown("#### Checks with findings")
-
-    if failed_checks:
-        for check in failed_checks:
-            label = FRIENDLY_CHECK_NAMES.get(check, check)
-            st.markdown(f"- {label}")
-    else:
-        st.caption("No selected checks produced findings.")
-
-
-def _render_top_priorities_card(result: dict[str, Any]) -> None:
-    top_priorities = _top_priorities(result)
-
-    st.markdown("#### Top priorities")
-
-    if top_priorities:
-        for idx, label in enumerate(top_priorities, start=1):
-            st.markdown(f"{idx}. {label}")
-
-        if st.button(
-            "View all findings",
-            key="overview-top-priorities-findings",
-            use_container_width=True,
-        ):
-            _go_to_findings()
-    else:
-        st.caption("No prioritized findings.")
-
-
 def _render_next_steps_card(result: dict[str, Any]) -> None:
     total, high, medium, low = _summary_counts(result)
 
@@ -411,12 +439,6 @@ def render_analysis_overview(result: dict[str, Any], show_title: bool = True) ->
 
     _render_next_steps_card(result)
 
-    col1, col2 = st.columns([1, 1.5])
-
-    with col1:
-        _render_failed_checks_card(result)
-
-    with col2:
-        _render_top_priorities_card(result)
+    _render_findings_by_check_card(result)
 
     _render_flow_diagram_panel(result)
