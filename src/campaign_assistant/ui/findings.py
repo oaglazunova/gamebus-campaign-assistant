@@ -282,42 +282,48 @@ def _issue_visualization_filter_key(issue: dict[str, Any]) -> str:
 
 
 def _location_lines(issue: dict[str, Any]) -> list[str]:
+    def formatted(value: Any) -> str:
+        escaped = str(value).replace("`", r"\`")
+        return f"`{escaped}`"
+
+    ("Wave", issue.get("wave_id")),
+    ("Visualization", issue.get("visualization")),
+    ("Visualization ID", issue.get("visualization_id")),
+    ("Challenge", issue.get("challenge")),
+    ("Challenge ID", issue.get("challenge_id")),
+
     fields = [
-        ("Visualization", issue.get("visualization")),
-        ("Challenge", issue.get("challenge")),
-        ("Wave", issue.get("wave_id")),
+        (
+            "Visualization",
+            issue.get("visualization"),
+            issue.get("visualization_id"),
+        ),
+        (
+            "Challenge",
+            issue.get("challenge"),
+            issue.get("challenge_id"),
+        ),
     ]
 
     lines: list[str] = []
 
-    for label, value in fields:
-        if value is None or value == "":
-            continue
+    for label, name, identifier in fields:
+        values: list[str] = []
 
-        formatted_value = str(value).replace("`", r"\`")
-        lines.append(f"**{label}:** `{formatted_value}`")
+        if name is not None and name != "":
+            values.append(formatted(name))
 
-    return lines
+        if identifier is not None and identifier != "":
+            values.append(f"id: {formatted(identifier)}")
 
+        if values:
+            lines.append(f"**{label}:** {', '.join(values)}")
 
-def _technical_detail_lines(issue: dict[str, Any]) -> list[str]:
-    fields = [
-        ("Check ID", issue.get("check")),
-        ("Visualization ID", issue.get("visualization_id")),
-        ("Challenge ID", issue.get("challenge_id")),
-        # ("Wave ID", issue.get("wave_id")),
-    ]
-
-    lines: list[str] = []
-
-    for label, value in fields:
-        if value is None or value == "":
-            continue
-
-        lines.append(f"**{label}:** `{value}`")
+    wave_id = issue.get("wave_id")
+    if wave_id is not None and wave_id != "":
+        lines.append(f"**Wave:** {formatted(wave_id)}")
 
     return lines
-
 
 
 def _assistant_prompt_for_issue(issue: dict[str, Any]) -> str:
@@ -633,14 +639,6 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                         "Open in GameBus Studio",
                         studio_url,
                     )
-
-                technical_details = _technical_detail_lines(issue)
-                if technical_details:
-                    with st.expander("Technical details", expanded=False):
-                        st.markdown(
-                            "\n".join(f"- {line}" for line in technical_details)
-                        )
-
 
                 fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
                 if fix_guidance:
