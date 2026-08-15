@@ -151,17 +151,15 @@ class AssistantCoordinator:
             )
 
         if route.agent_name == "theory_support_agent":
-            answer = self.theory_support_agent.run(
-                question=question,
-                context=context,
-                conversation_history=conversation_history,
-            )
+            selected_agent = self.theory_support_agent
         else:
-            answer = self.campaign_support_agent.run(
-                question=question,
-                context=context,
-                conversation_history=conversation_history,
-            )
+            selected_agent = self.campaign_support_agent
+
+        answer = selected_agent.run(
+            question=question,
+            context=context,
+            conversation_history=conversation_history,
+        )
 
         guard = validate_agent_response(
             question=question,
@@ -172,7 +170,7 @@ class AssistantCoordinator:
 
         guard_applied = False
         guard_reason = None
-        answer_source = "agent"
+        answer_source = selected_agent.last_answer_source
 
         if not guard.safe and guard.replacement_text:
             answer = guard.replacement_text

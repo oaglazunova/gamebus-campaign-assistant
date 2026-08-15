@@ -1219,6 +1219,7 @@ class CampaignSupportAgent(BaseAgent):
 
 	def __init__(self, llm_client: LLMClient | None = None):
 		self.llm_client = llm_client
+		self.last_answer_source = "deterministic"
 
 	def run_quick_action(
 			self,
@@ -1262,6 +1263,8 @@ class CampaignSupportAgent(BaseAgent):
 			context: dict[str, Any],
 			conversation_history: list[dict[str, str]] | None = None,
 	) -> str:
+		self.last_answer_source = "deterministic"
+
 		if _is_acknowledgement(question):
 			return (
 				"You’re welcome. Ask about a specific finding, fix guidance, "
@@ -1315,6 +1318,7 @@ class CampaignSupportAgent(BaseAgent):
 				conversation_history=conversation_history,
 			)
 			if llm_answer:
+				self.last_answer_source = "llm"
 				return llm_answer
 
 		highest_priority_answer = _highest_priority_finding_answer(question, context)

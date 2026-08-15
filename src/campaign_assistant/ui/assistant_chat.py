@@ -54,11 +54,21 @@ def render_conversation_message(
         message.get("agent_name")
     )
 
+    caption = label
+
+    if _show_response_source():
+        source_label = _response_source_label(
+            message.get("answer_source")
+        )
+
+        if source_label:
+            caption += f" · {source_label}"
+
     with st.chat_message(
-        "assistant",
-        avatar=avatar,
+            "assistant",
+            avatar=avatar,
     ):
-        st.caption(label)
+        st.caption(caption)
         st.markdown(content)
 
 
@@ -180,6 +190,42 @@ def _format_top_issues(result: dict[str, Any], limit: int = 5) -> str:
             lines.append(f"{idx}. **{label}**")
 
     return "\n".join(lines)
+
+
+def _show_response_source() -> bool:
+    value = os.getenv(
+        "CAMPAIGN_ASSISTANT_SHOW_RESPONSE_SOURCE",
+        "false",
+    ).strip().lower()
+
+    return value in {"1", "true", "yes", "on"}
+
+
+def _response_source_label(
+    answer_source: str | None,
+) -> str | None:
+    source = str(answer_source or "").lower()
+
+    if source == "llm":
+        return "LLM-generated"
+
+    if source == "guard_replacement":
+        return "Deterministic guard response"
+
+    if (
+        "deterministic" in source
+        or source in {
+            "prepared_finding",
+            "uncertainty",
+            "no_analysis",
+        }
+    ):
+        return "Deterministic"
+
+    if source == "internal_error":
+        return "System error"
+
+    return None
 
 
 def focused_finding_for_quick_action(
@@ -561,6 +607,7 @@ def render_finding_assistant_dialog(
         "role": "assistant",
         "content": response.text,
         "agent_name": response.agent_name,
+        "answer_source": response.answer_source,
     }
 
     messages.append(assistant_message)

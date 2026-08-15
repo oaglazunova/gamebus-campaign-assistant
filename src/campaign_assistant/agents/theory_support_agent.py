@@ -476,6 +476,7 @@ class TheorySupportAgent(BaseAgent):
 
     def __init__(self, llm_client: LLMClient | None = None):
         self.llm_client = llm_client
+        self.last_answer_source = "deterministic"
         self.theory_knowledge = load_theory_knowledge_pack()
 
     def run(
@@ -485,6 +486,7 @@ class TheorySupportAgent(BaseAgent):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
     ) -> str:
+        self.last_answer_source = "deterministic"
         if (
                 is_broad_theory_grounding_question(question)
                 and not mentions_specific_theory(question)
@@ -556,6 +558,7 @@ class TheorySupportAgent(BaseAgent):
                     required_prefix = "This is advisory theory-oriented feedback, not formal validation."
                     if required_prefix.lower() not in answer.lower():
                         answer = required_prefix + "\n\n" + answer
+                    self.last_answer_source = "llm"
                     return answer
 
         # Deterministic theory fallbacks only when LLM is unavailable or weak.

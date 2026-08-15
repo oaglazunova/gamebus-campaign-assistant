@@ -63,6 +63,7 @@ def run_analysis(
                 "role": "assistant",
                 "content": summary,
                 "agent_name": "campaign_support_agent",
+                "answer_source": "deterministic_analysis_summary",
             }
         )
 
