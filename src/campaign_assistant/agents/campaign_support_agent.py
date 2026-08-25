@@ -58,13 +58,15 @@ Strict boundaries:
 - For broad questions such as "is this a good campaign?", distinguish structural checker results from content quality, theory alignment, and outcome effectiveness.
 
 Response style:
+- Start with the answer to the user's current question, not with a recap of the campaign or finding.
+- Treat information in the recent conversation as already known. Add the next useful piece of information instead of repeating the previous answer.
+- When a focused finding is selected, assume its title, check, severity, and location are already visible in the UI. Do not reproduce that metadata unless it is needed to disambiguate the answer.
+- For a meaning question, explain the practical consequence and what evidence the organizer should inspect.
+- For a fix question, use the deterministic guidance and make the inspection/change sequence clear.
+- For a follow-up question, answer only the requested follow-up. If the user asks for a shorter version, return only the shorter version.
 - Do not merely repeat the deterministic guidance verbatim.
 - Do not answer with only "Okay", "Sure", or another acknowledgement.
-- For finding explanations, use this structure:
-  1. What the checker found.
-  2. Why it matters.
-  3. What to inspect in GameBus Studio.
-  4. What to change, if the finding is valid.
+- Use short headings only when they make a multi-part answer easier to scan.
 - Keep answers practical and concise.
 - Prefer concrete field names from deterministic guidance or GameBus Studio source facts.
 
@@ -460,6 +462,34 @@ def _deterministic_guidance_answer(
 	severity = finding.get("severity") or "unknown"
 	guidance = finding.get("deterministic_gamebus_fix_guidance")
 	source_facts = finding.get("gamebus_studio_source_facts")
+	focused_finding = context.get(
+		"focused_finding"
+	)
+	is_focused = (
+			isinstance(focused_finding, dict)
+			and finding is focused_finding
+	)
+
+	if is_focused:
+		lines = [
+			"**What to inspect or change**",
+			"",
+			str(guidance),
+		]
+
+		url = finding.get("url")
+		if url:
+			lines.extend(
+				[
+					"",
+					(
+						"[Open this challenge in "
+						f"GameBus Studio]({url})"
+					),
+				]
+			)
+
+		return "\n".join(lines)
 
 	lines = [
 		"Use the deterministic GameBus Studio guidance for this finding.",
@@ -1157,29 +1187,75 @@ def _format_conversation_history(history: list[dict[str, str]] | None) -> str:
 	return "\n".join(lines)
 
 
+def _focused_finding_prompt(
+    context: dict[str, Any],
+) -> str:
+    finding = context.get("focused_finding")
+
+    if not isinstance(finding, dict):
+        return (
+            "No finding is currently selected "
+            "in the UI."
+        )
+
+    return """
+    A finding is currently selected and remains visible to the
+    user in the Findings dialog.
+    - Treat the selected finding as known context.
+    - Do not restate its title, check, severity, visualization,
+      challenge, IDs, or full message.
+    - Answer the user's exact question about it.
+    - Add interpretation, implications, inspection logic, or a
+      concrete next step that is not already obvious from the
+      finding card.
+    - If deterministic GameBus Studio guidance is present, treat
+      it as authoritative and do not invent additional fields or
+      editor locations.
+    """.strip()
+
+
 
 def _llm_campaign_answer(
-		*,
-		llm_client: LLMClient,
-		question: str,
-		context: dict[str, Any],
-		conversation_history: list[dict[str, str]] | None = None,
+    *,
+    llm_client: LLMClient,
+    question: str,
+    context: dict[str, Any],
+    conversation_history: (
+        list[dict[str, str]] | None
+    ) = None,
 ) -> str | None:
-	context_markdown = format_llm_context_markdown(context)
+    context_markdown = (
+        format_llm_context_markdown(context)
+    )
 
-	field_facts = gamebus_studio_field_facts_markdown_for_question(question)
-	if field_facts:
-		context_markdown = "\n\n".join(
-			[
-				context_markdown,
-				"# Relevant GameBus Studio field facts for this question",
-				field_facts,
-			]
-		)
+    field_facts = (
+        gamebus_studio_field_facts_markdown_for_question(
+            question
+        )
+    )
 
-	conversation_text = _format_conversation_history(conversation_history)
+    if field_facts:
+        context_markdown = "\n\n".join(
+            [
+                context_markdown,
+                (
+                    "# Relevant GameBus Studio "
+                    "field facts for this question"
+                ),
+                field_facts,
+            ]
+        )
 
-	user_prompt = f"""
+    conversation_text = (
+        _format_conversation_history(
+            conversation_history
+        )
+    )
+    focused_finding_instructions = (
+        _focused_finding_prompt(context)
+    )
+
+    user_prompt = f"""
     Recent conversation:
     {conversation_text}
 
@@ -1189,29 +1265,46 @@ def _llm_campaign_answer(
     Available checker/campaign context:
     {context_markdown}
 
-    Answer the current question using the recent conversation and available campaign/checker context.
+    Finding-specific interaction instructions:
+    {focused_finding_instructions}
+
+    Answer the current question using the recent conversation
+    and available campaign/checker context.
 
     Important:
-    - If the current question says "this", "it", "that issue", or asks to make something shorter, use the recent conversation to identify the referent.
-    - If the referent is still unclear, say you are not sure and suggest a clearer question.
-    - Do not summarize the whole campaign unless the user asks for a summary or overview.
+    - If the current question says "this", "it", "that issue",
+      or asks to make something shorter, use the recent
+      conversation to identify the referent.
+    - If the referent is still unclear, say you are not sure
+      and suggest a clearer question.
+    - Do not summarize the whole campaign unless the user asks
+      for a summary or overview.
+    - Treat previous Assistant replies as already given. Do not
+      repeat them before answering the follow-up.
+    - If the user asks for a shorter or clearer version, output
+      only the revised version.
+    - An explanation must add why the finding matters, what
+      evidence to inspect, or what to do next; a paraphrase of
+      the finding alone is insufficient.
     """
 
-	response = llm_client.generate(
-		system_prompt=CAMPAIGN_SUPPORT_SYSTEM_PROMPT.strip(),
-		user_prompt=user_prompt.strip(),
-		temperature=0.2,
-	)
+    response = llm_client.generate(
+        system_prompt=(
+            CAMPAIGN_SUPPORT_SYSTEM_PROMPT.strip()
+        ),
+        user_prompt=user_prompt.strip(),
+        temperature=0.2,
+    )
 
-	if not response.available:
-		return None
+    if not response.available:
+        return None
 
-	answer = response.text.strip()
+    answer = response.text.strip()
 
-	if _is_weak_llm_answer(answer):
-		return None
+    if _is_weak_llm_answer(answer):
+        return None
 
-	return answer
+    return answer
 
 
 class CampaignSupportAgent(BaseAgent):

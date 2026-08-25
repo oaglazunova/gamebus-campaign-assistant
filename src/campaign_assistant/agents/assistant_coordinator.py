@@ -57,7 +57,10 @@ class AssistantCoordinator:
             quick_action: str | None = None,
             focused_finding: dict[str, Any] | None = None,
     ) -> AssistantResponse:
-        route = self.router.route(question)
+        route = self.router.route(
+            question,
+            conversation_history=conversation_history,
+        )
         context = build_llm_context(result)
 
         if _is_acknowledgement(question):
@@ -112,20 +115,6 @@ class AssistantCoordinator:
                 guard_reason=None,
             )
 
-        if _is_acknowledgement(question):
-            return AssistantResponse(
-                text=(
-                    "You’re welcome. Ask about a specific finding, fix guidance, "
-                    "campaign structure, or theory alignment when you want to continue."
-                ),
-                agent_name="campaign_support_agent",
-                intent="acknowledgement",
-                routing_reason="Acknowledgement handled without LLM.",
-                answer_source="deterministic_acknowledgement",
-                guard_applied=False,
-                guard_reason=None,
-            )
-
         prepared_finding_answer = explain_prepared_finding(question)
 
         if prepared_finding_answer is not None:
@@ -170,7 +159,11 @@ class AssistantCoordinator:
 
         guard_applied = False
         guard_reason = None
-        answer_source = selected_agent.last_answer_source
+        answer_source = getattr(
+            selected_agent,
+            "last_answer_source",
+            "unknown",
+        )
 
         if not guard.safe and guard.replacement_text:
             answer = guard.replacement_text

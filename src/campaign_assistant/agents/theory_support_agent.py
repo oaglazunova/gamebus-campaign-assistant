@@ -49,6 +49,12 @@ Strict boundaries:
 Required framing:
 - Start theory-alignment answers by saying: "This is advisory theory-oriented feedback, not formal validation."
 - Use cautious wording such as "appears to", "may support", "could be strengthened by", "the export suggests".
+- Answer the current question directly after the required advisory sentence.
+- Treat recent Assistant replies as already known and do not repeat them before addressing a follow-up.
+- When a focused finding is present, assume its metadata is already visible and discuss only the theory/design implication requested by the user.
+- Do not repeat campaign counts or generic descriptions of all supported frameworks unless they are directly relevant.
+- For improvement questions, provide a short prioritized set of concrete design actions and state what campaign evidence should be reviewed.
+- If the user asks for a shorter or clearer version, return only the revised version after the required advisory sentence.
 - Keep answers practical and concise.
 
 {THEORY_UNCERTAINTY_RULES}
@@ -543,6 +549,11 @@ class TheorySupportAgent(BaseAgent):
             - If the user gave extra design context in the recent conversation, use it cautiously and say that it is user-provided context.
             - If the export is insufficient, explain what extra design information would be needed.
             - Do not invent task content, feedback text, participant choices, or stage logic.
+            - Treat previous Assistant replies as already given. Answer only the new question or requested refinement.
+            - If a focused finding is present in the context, do not restate its title, check, severity, or location.
+            - Do not repeat campaign structure counts unless the current question depends on them.
+            - For improvement advice, prioritize 3-5 concrete actions and identify the evidence the organizer should review for each action.
+            - If the user asks for a shorter or clearer version, output only that revised version after the required advisory sentence.
             """
 
             response = self.llm_client.generate(
