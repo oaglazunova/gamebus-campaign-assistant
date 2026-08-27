@@ -23,7 +23,6 @@ from campaign_assistant.ui.overview import render_analysis_overview
 from campaign_assistant.ui.session import init_state
 from campaign_assistant.ui.sidebar import render_sidebar
 from campaign_assistant.ui.copy import WORKFLOW_PAGE_COPY
-from campaign_assistant.agents.context_builder import build_llm_context
 
 
 st.set_page_config(page_title="GameBus Campaign Assistant", page_icon="🩺", layout="wide")
@@ -36,6 +35,130 @@ _WORKFLOW_PAGES = ["Overview", "Findings", "Assistant"]
 def _render_page_intro(title: str, description: str) -> None:
 	st.markdown(f"## {title}")
 	st.caption(description)
+
+
+def _render_scroll_anchor(
+    anchor_id: str,
+) -> None:
+    st.html(
+        f'<span id="{anchor_id}"></span>'
+    )
+
+
+def _render_scroll_button(
+    label: str,
+    target: str,
+    *,
+    align: str = "flex-start",
+) -> None:
+    st.html(
+        f"""
+        <div style="
+            display:flex;
+            justify-content:{align};
+        ">
+            <a
+                href="#{target}"
+                target="_self"
+                style="
+                    display:inline-flex;
+                    align-items:center;
+                    padding:0.35rem 0.75rem;
+                    border:
+                        1px solid
+                        rgba(128,128,128,0.45);
+                    border-radius:0.5rem;
+                    color:inherit;
+                    text-decoration:none;
+                    font-size:0.9rem;
+                "
+            >
+                {label}
+            </a>
+        </div>
+        """
+    )
+
+
+
+def _render_floating_top_button(
+    target: str,
+    *,
+    above_chat_input: bool = False,
+) -> None:
+    bottom = (
+        "7.25rem"
+        if above_chat_input
+        else "1.25rem"
+    )
+    mobile_bottom = (
+        "6.5rem"
+        if above_chat_input
+        else "0.75rem"
+    )
+
+    st.html(
+        f"""
+        <a
+            id="floating-back-to-top"
+            href="#{target}"
+            target="_self"
+            aria-label="Back to top"
+            title="Back to top"
+        >
+            ↑
+        </a>
+
+        <style>
+            #floating-back-to-top {{
+                position: fixed !important;
+                right: 1.25rem;
+                bottom: {bottom};
+                z-index: 999;
+
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                width: 2.75rem;
+                height: 2.75rem;
+                border-radius: 50%;
+
+                background:
+                    var(--primary-color, #ff4b4b);
+                color: #ffffff;
+
+                font-size: 1.45rem;
+                font-weight: 700;
+                line-height: 1;
+                text-decoration: none;
+
+                box-shadow:
+                    0 0.2rem 0.75rem
+                    rgba(0, 0, 0, 0.25);
+
+                cursor: pointer;
+                pointer-events: auto;
+            }}
+
+            #floating-back-to-top:hover {{
+                transform: translateY(-2px);
+                box-shadow:
+                    0 0.35rem 0.95rem
+                    rgba(0, 0, 0, 0.3);
+            }}
+
+            @media (max-width: 768px) {{
+                #floating-back-to-top {{
+                    right: 0.75rem;
+                    bottom: {mobile_bottom};
+                }}
+            }}
+        </style>
+        """
+    )
+
+
 
 
 def _render_empty_workflow_state(message: str) -> None:
@@ -245,14 +368,17 @@ def _render_overview_page(result) -> None:
 
 
 def _render_findings_page(result) -> None:
-	_render_page_intro("Findings", WORKFLOW_PAGE_COPY["Findings"]["description"])
+    _render_page_intro(
+        "Findings",
+        WORKFLOW_PAGE_COPY["Findings"]["description"],
+    )
 
-	if not result:
-		_render_empty_workflow_state("Findings")
-		return
+    if not result:
+        _render_empty_workflow_state("Findings")
+        return
 
-	render_findings_overview_panel(result)
-	render_issues_panel(result)
+    render_findings_overview_panel(result)
+    render_issues_panel(result)
 
 
 def _handle_pending_assistant_prompt(logger, result) -> None:
@@ -274,7 +400,12 @@ def _handle_pending_assistant_prompt(logger, result) -> None:
 
 	logger.log_chat_user(pending)
 
-	st.session_state.messages.append({"role": "user", "content": pending})
+	st.session_state.messages.append(
+		{
+				"role": "user",
+				"content": pending,
+			}
+		)
 
 	response = get_assistant_response(
 		pending,
@@ -299,13 +430,19 @@ def _handle_pending_assistant_prompt(logger, result) -> None:
 		"role": "assistant",
 		"content": response.text,
 		"agent_name": response.agent_name,
+		"answer_source": response.answer_source,
 	})
 
 	st.rerun()
 
 
 def _render_assistant_page(logger) -> None:
-	_render_page_intro("Assistant", WORKFLOW_PAGE_COPY["Assistant"]["description"])
+	_render_page_intro(
+		"Assistant",
+		WORKFLOW_PAGE_COPY[
+			"Assistant"
+		]["description"],
+	)
 
 	result = st.session_state.result
 
@@ -317,15 +454,41 @@ def _render_assistant_page(logger) -> None:
 	render_llm_status_panel()
 	render_assistant_guide_panel(result)
 
-	control_col1, control_col2 = st.columns([1, 4])
+	control_col1, control_col2 = st.columns(
+		[1, 4]
+	)
+
 	with control_col1:
-		if st.button("Reset conversation", key="assistant-clear-conversation", use_container_width=True):
+		if st.button(
+				"Reset conversation",
+				key="assistant-clear-conversation",
+				width="stretch",
+		):
 			st.session_state.messages = []
-			st.session_state.pop("assistant_focused_finding", None)
-			st.session_state.pop("assistant_pending_quick_action", None)
-			st.session_state.pop("assistant_pending_question", None)
-			st.session_state.pop("assistant_notice", None)
+			st.session_state.pop(
+				"assistant_focused_finding",
+				None,
+			)
+			st.session_state.pop(
+				"assistant_pending_quick_action",
+				None,
+			)
+			st.session_state.pop(
+				"assistant_pending_question",
+				None,
+			)
+			st.session_state.pop(
+				"assistant_notice",
+				None,
+			)
 			st.rerun()
+
+	with control_col2:
+		_render_scroll_button(
+			"↓ Latest message",
+			"assistant-page-bottom",
+			align="flex-end",
+		)
 
 	_handle_pending_assistant_prompt(logger, result)
 
@@ -339,13 +502,23 @@ def _render_assistant_page(logger) -> None:
 		for message in st.session_state.messages:
 			render_conversation_message(message)
 
+	_render_scroll_anchor(
+		"assistant-page-bottom"
+	)
+
 	user_question = st.chat_input("Ask about this campaign...")
 
 	if user_question:
 		conversation_history = list(st.session_state.messages)
 
 		logger.log_chat_user(user_question)
-		st.session_state.messages.append({"role": "user", "content": user_question})
+
+		st.session_state.messages.append(
+			{
+				"role": "user",
+				"content": user_question,
+			}
+		)
 
 		response = get_assistant_response(
 			user_question,
@@ -369,6 +542,7 @@ def _render_assistant_page(logger) -> None:
 			"role": "assistant",
 			"content": response.text,
 			"agent_name": response.agent_name,
+			"answer_source": response.answer_source,
 		})
 
 		st.rerun()
@@ -386,23 +560,50 @@ def main() -> None:
 	result = st.session_state.result
 	_sync_main_workflow_focus_from_result(result)
 
-	requested_page = st.session_state.pop("requested_workflow_page", None)
-	if requested_page in _WORKFLOW_PAGES:
-		st.session_state["main_workflow_page"] = requested_page
+	requested_page = st.session_state.pop(
+		"requested_workflow_page",
+		None,
+	)
 
-	current_page = st.session_state.get("main_workflow_page", "Overview")
+	if requested_page in _WORKFLOW_PAGES:
+		st.session_state[
+			"main_workflow_page"
+		] = requested_page
+
+	if "main_workflow_page" not in st.session_state:
+		st.session_state[
+			"main_workflow_page"
+		] = "Overview"
+
+	current_page = st.session_state[
+		"main_workflow_page"
+	]
+
 	if current_page not in _WORKFLOW_PAGES:
-		current_page = "Overview"
-		st.session_state["main_workflow_page"] = current_page
+		st.session_state[
+			"main_workflow_page"
+		] = "Overview"
+
+	_render_scroll_anchor(
+		"workflow-page-top"
+	)
 
 	selected_page = st.radio(
 		"Workflow",
 		options=_WORKFLOW_PAGES,
-		index=_WORKFLOW_PAGES.index(current_page),
+		index=None,
 		horizontal=True,
 		label_visibility="collapsed",
 		key="main_workflow_page",
 	)
+
+	if result:
+		_render_floating_top_button(
+			"workflow-page-top",
+			above_chat_input=(
+					selected_page == "Assistant"
+			),
+		)
 
 	if selected_page == "Overview":
 		_render_overview_page(result)

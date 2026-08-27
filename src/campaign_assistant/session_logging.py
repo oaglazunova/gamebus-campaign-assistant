@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -147,6 +147,7 @@ class SessionLogger:
         result_summary: Dict[str, Any],
         assistant_summary: str,
         excel_report_path: Optional[str] = None,
+        analysis_notes: list[str] | None = None,
     ) -> None:
         self.log(
             "analysis_completed",
@@ -157,6 +158,9 @@ class SessionLogger:
                 "result_summary": result_summary,
                 "assistant_summary": assistant_summary,
                 "excel_report_path": excel_report_path,
+                "analysis_notes": list(
+                    analysis_notes or []
+                ),
             },
         )
 

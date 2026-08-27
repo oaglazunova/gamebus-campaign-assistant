@@ -5,7 +5,6 @@ import base64
 import re
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from campaign_assistant.checker.schema import (
     CHECK_PICKER_CHECKS,
@@ -14,6 +13,10 @@ from campaign_assistant.checker.schema import (
 )
 from campaign_assistant.diagram import build_campaign_flow_svg
 from campaign_assistant.checker.check_metadata import PRIORITY_HINT
+
+
+
+_FINDINGS_PAGE_SIZE = 30
 
 
 def _campaign_snapshot(result: dict[str, Any]) -> dict[str, Any]:
@@ -282,7 +285,7 @@ def _render_flow_diagram_dialog(
         unsafe_allow_html=True,
     )
 
-    components.html(
+    st.iframe(
         f"""
         <div class="diagram-dialog-content">
             <div class="diagram-toolbar">
@@ -368,7 +371,6 @@ def _render_flow_diagram_dialog(
             _diagram_preview_height(str(svg))
             + 55
         ),
-        scrolling=False,
     )
 
 

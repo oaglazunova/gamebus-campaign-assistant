@@ -45,6 +45,7 @@ Strict boundaries:
 - Do not modify or generate campaign files.
 - Do not present theory feedback as deterministic checker output.
 - If the campaign context is insufficient, say what information would be needed.
+- Do not discuss checker repair guidance unless the current question explicitly asks for it.
 
 Required framing:
 - Start theory-alignment answers by saying: "This is advisory theory-oriented feedback, not formal validation."
@@ -477,6 +478,52 @@ def _is_improvement_question(question: str) -> bool:
     ) or any(phrase in normalized for phrase in improvement_phrases)
 
 
+
+def _context_for_theory_prompt(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    safe_context = dict(context)
+
+    safe_context.pop(
+        "focused_finding",
+        None,
+    )
+    safe_context.pop(
+        "representative_findings_by_check",
+        None,
+    )
+
+    # Checker repair instructions are not
+    # theory-design evidence.
+    safe_context["top_findings"] = []
+
+    return safe_context
+
+
+def _theory_answer_drifted(
+    question: str,
+    answer: str,
+) -> bool:
+    if not mentions_specific_theory(question):
+        return False
+
+    normalized = _normalized(answer)
+
+    checker_repair_phrases = (
+        "duplicate task",
+        "secret condition",
+        "gamebus studio fix guidance",
+        "finding-specific interaction instructions",
+        "target points reachable check",
+        "tbm system",
+    )
+
+    return any(
+        phrase in normalized
+        for phrase in checker_repair_phrases
+    )
+
+
 class TheorySupportAgent(BaseAgent):
     name = "theory_support_agent"
 
@@ -523,7 +570,13 @@ class TheorySupportAgent(BaseAgent):
 
         # Use the LLM for theory explanation, synthesis, and improvement advice when available.
         if self.llm_client is not None:
-            context_markdown = format_llm_context_markdown(context)
+            context_markdown = (
+                format_llm_context_markdown(
+                    _context_for_theory_prompt(
+                        context
+                    )
+                )
+            )
 
             conversation_text = _format_conversation_history(conversation_history)
 
@@ -550,7 +603,7 @@ class TheorySupportAgent(BaseAgent):
             - If the export is insufficient, explain what extra design information would be needed.
             - Do not invent task content, feedback text, participant choices, or stage logic.
             - Treat previous Assistant replies as already given. Answer only the new question or requested refinement.
-            - If a focused finding is present in the context, do not restate its title, check, severity, or location.
+            - Do not discuss checker findings or GameBus Studio repair guidance unless the current question explicitly asks how they relate to theory.
             - Do not repeat campaign structure counts unless the current question depends on them.
             - For improvement advice, prioritize 3-5 concrete actions and identify the evidence the organizer should review for each action.
             - If the user asks for a shorter or clearer version, output only that revised version after the required advisory sentence.
@@ -565,7 +618,13 @@ class TheorySupportAgent(BaseAgent):
             if response.available:
                 answer = response.text.strip()
 
-                if not _is_weak_llm_answer(answer):
+                if (
+                        not _is_weak_llm_answer(answer)
+                        and not _theory_answer_drifted(
+                    question,
+                    answer,
+                )
+                ):
                     required_prefix = "This is advisory theory-oriented feedback, not formal validation."
                     if required_prefix.lower() not in answer.lower():
                         answer = required_prefix + "\n\n" + answer

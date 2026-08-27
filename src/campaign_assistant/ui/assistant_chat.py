@@ -530,19 +530,15 @@ def render_finding_assistant_dialog(
         st.caption(" · ".join(location_parts))
 
     st.caption(
-        "The Assistant already has the selected finding and campaign "
-        "context. Ask for an explanation or a more specific next step."
+        "The Assistant already knows the finding's context. Ask for an explanation or a more specific next step."
     )
 
-    history = st.container(height=360)
+    history = st.container(height=240, border=True)
     empty_state = None
 
     with history:
         if not messages:
-            empty_state = st.info(
-                "No conversation about this finding yet. "
-                "Choose a question below or write your own."
-            )
+            empty_state = st.caption("Choose a question below or write your own.")
 
         for message in messages:
             render_conversation_message(message)

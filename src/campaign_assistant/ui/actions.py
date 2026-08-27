@@ -75,6 +75,7 @@ def run_analysis(
                 result_summary=result.get("summary", {}),
                 assistant_summary=summary,
                 excel_report_path=result.get("excel_report_path"),
+                analysis_notes=result.get("notes", []),
             )
 
     except Exception as exc:

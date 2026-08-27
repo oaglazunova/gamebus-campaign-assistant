@@ -20,6 +20,17 @@ from campaign_assistant.ui.assistant_chat import (
 
 
 _QUOTED_VALUE_PATTERN = re.compile(r"'([^'\n]+)'")
+_FINDINGS_PAGE_SIZE = 30
+
+
+def _clean_display_text(value: Any) -> str:
+    """Restore escaped zero-width joiners used by emoji sequences."""
+    return re.sub(
+        r"\\+u200d",
+        "\u200d",
+        str(value or ""),
+        flags=re.IGNORECASE,
+    )
 
 
 def _format_meaningful_values(text: str) -> str:
@@ -29,7 +40,7 @@ def _format_meaningful_values(text: str) -> str:
 
     return _QUOTED_VALUE_PATTERN.sub(
         _replacement,
-        str(text or ""),
+        _clean_display_text(text),
     )
 
 
@@ -133,12 +144,30 @@ def _issue_title(issue: dict[str, Any]) -> str:
 def _issue_heading_and_details(
     issue: dict[str, Any],
 ) -> tuple[str, str]:
-    message = _issue_message(issue).strip()
+    message = _clean_display_text(
+        _issue_message(issue)
+    ).strip()
 
     if not message:
-        return _issue_title(issue).strip(), ""
+        return (
+            _clean_display_text(
+                _issue_title(issue)
+            ).strip(),
+            "",
+        )
 
-    # Prefer a sentence boundary; multiline findings may use the first line.
+    # Keep the complete challenge-reference list on a separate line.
+    challenge_reference_marker = " (see challenges "
+    marker_index = message.lower().find(
+        challenge_reference_marker
+    )
+
+    if marker_index >= 0:
+        return (
+            message[:marker_index].rstrip(),
+            message[marker_index + 1:].strip(),
+        )
+
     boundary = re.search(
         r"(?<=[.!?])\s+|\n+",
         message,
@@ -286,7 +315,10 @@ def _issue_visualization_filter_key(issue: dict[str, Any]) -> str:
 
 def _location_lines(issue: dict[str, Any]) -> list[str]:
     def formatted(value: Any) -> str:
-        escaped = str(value).replace("`", r"\`")
+        escaped = _clean_display_text(value).replace(
+            "`",
+            r"\`",
+        )
         return f"`{escaped}`"
 
     fields = [
@@ -327,7 +359,22 @@ def _focused_finding(
 ) -> dict[str, Any]:
     focused_finding = dict(issue)
 
-    fix_guidance = gamebus_fix_guidance_markdown_for_issue(issue)
+    for key in (
+        "title",
+        "message",
+        "description",
+        "details",
+        "visualization",
+        "challenge",
+    ):
+        if key in focused_finding:
+            focused_finding[key] = _clean_display_text(
+                focused_finding[key]
+            )
+
+    fix_guidance = gamebus_fix_guidance_markdown_for_issue(
+        issue
+    )
 
     if fix_guidance:
         focused_finding[
@@ -335,17 +382,6 @@ def _focused_finding(
         ] = fix_guidance
 
     return focused_finding
-
-
-def _severity_badge(severity: str) -> str:
-    severity = severity.lower()
-    if severity in {"critical", "high"}:
-        return "🔴 High"
-    if severity == "medium":
-        return "🟠 Medium"
-    if severity == "low":
-        return "🟡 Low"
-    return "⚪ No severity"
 
 
 def _count_by_severity(issues: list[dict[str, Any]]) -> dict[str, int]:
@@ -365,14 +401,6 @@ def _count_by_severity(issues: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def _count_by_check(issues: list[dict[str, Any]]) -> dict[str, int]:
-    counts: dict[str, int] = defaultdict(int)
-
-    for issue in issues:
-        check = str(issue.get("check") or "unknown")
-        counts[check] += 1
-
-    return dict(counts)
 
 
 def render_findings_overview_panel(result: dict[str, Any]) -> None:
@@ -381,7 +409,6 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
 
     total = int(summary.get("total_issues", len(issues)) or 0)
     severity_counts = _count_by_severity(issues)
-    check_counts = _count_by_check(issues)
 
     st.subheader("Findings overview", help=PRIORITY_HINT)
 
@@ -407,13 +434,6 @@ def render_findings_overview_panel(result: dict[str, Any]) -> None:
         "Use the filters below to narrow the list. Ask the Assistant when you need "
         "additional explanation for a specific finding."
     )
-
-    if check_counts:
-        with st.expander("Finding counts by check", expanded=False):
-            for check_id in _ordered_check_ids(check_counts):
-                st.markdown(
-                    f"- **{_check_label(check_id)}**: {check_counts[check_id]}"
-                )
 
 
 def render_issues_panel(result: dict[str, Any]) -> None:
@@ -541,17 +561,62 @@ def render_issues_panel(result: dict[str, Any]) -> None:
 
         filtered = [issue for issue in filtered if _matches(issue)]
 
-    st.caption(f"Showing {len(filtered)} of {len(issues)} findings.")
-
     if not filtered:
         st.info("No findings match the selected filters.")
         return
 
+    total_filtered = len(filtered)
+    total_pages = max(
+        1,
+        (
+                total_filtered
+                + _FINDINGS_PAGE_SIZE
+                - 1
+        )
+        // _FINDINGS_PAGE_SIZE,
+    )
+
+    page_key = "findings-results-page"
+    page_options = list(range(1, total_pages + 1))
+
+    if st.session_state.get(page_key) not in page_options:
+        st.session_state.pop(page_key, None)
+
+    if total_pages > 1:
+        page = st.selectbox(
+            "Results page",
+            options=page_options,
+            format_func=lambda value: (
+                f"Page {value} of {total_pages}"
+            ),
+            key=page_key,
+        )
+    else:
+        page = 1
+
+    start_index = (page - 1) * _FINDINGS_PAGE_SIZE
+    end_index = min(
+        start_index + _FINDINGS_PAGE_SIZE,
+        total_filtered,
+    )
+    visible_issues = filtered[start_index:end_index]
+
+    st.caption(
+        f"Showing findings {start_index + 1}–{end_index} "
+        f"of {total_filtered} matching findings "
+        f"({len(issues)} total)."
+    )
+
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for issue in filtered:
-        grouped[str(issue.get("check") or "unknown")].append(issue)
+
+    for issue in visible_issues:
+        grouped[
+            str(issue.get("check") or "unknown")
+        ].append(issue)
 
     expand_group = len(grouped) == 1
+
+    dialog_request: tuple[dict[str, Any], str] | None = None
 
     for check_id in _ordered_check_ids(grouped):
         check_issues = grouped[check_id]
@@ -580,9 +645,16 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 )
 
                 if details:
-                    st.markdown(
-                        _format_meaningful_values(details)
+                    formatted_details = _format_meaningful_values(
+                        details
                     )
+
+                    if details.lower().startswith(
+                            "(see challenges "
+                    ):
+                        st.caption(formatted_details)
+                    else:
+                        st.markdown(formatted_details)
 
                 location = _location_lines(issue)
                 if location:
@@ -611,13 +683,18 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                         key=button_key,
                         use_container_width=False,
                 ):
-                    render_finding_assistant_dialog(
-                        result,
+                    dialog_request = (
                         _focused_finding(issue),
                         heading,
                     )
 
-                # with st.expander("Raw finding details", expanded=False):
-                #     st.json(issue)
-
                 st.divider()
+
+    if dialog_request is not None:
+        focused_finding, dialog_heading = dialog_request
+
+        render_finding_assistant_dialog(
+            result,
+            focused_finding,
+            dialog_heading,
+        )
