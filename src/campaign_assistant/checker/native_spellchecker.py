@@ -116,9 +116,11 @@ def _issue(
     challenge: Mapping[str, Any],
     visualization: Mapping[str, Any],
     active_wave_ids: set[Any],
+    title: str,
     message: str,
 ) -> Issue:
     wave_id = _clean_scalar(visualization.get("wave"))
+
     return Issue(
         check=SPELLCHECKER,
         severity="low",
@@ -128,6 +130,7 @@ def _issue(
         challenge_id=_clean_scalar(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title=title,
         message=message,
         url=_challenge_url(visualization, challenge),
     )
@@ -195,6 +198,7 @@ def run_native_spellchecker_tables(
                         challenge=challenge,
                         visualization=visualization,
                         active_wave_ids=active_wave_ids,
+                        title="Task name needs review",
                         message=errormessage,
                     )
                 )
@@ -212,6 +216,8 @@ def run_native_spellchecker_tables(
                         challenge=challenge,
                         visualization=visualization,
                         active_wave_ids=active_wave_ids,
+                        # title="Challenge name needs review",
+                        title="Level name needs review",
                         message=errormessage,
                     )
                 )

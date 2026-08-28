@@ -50,7 +50,6 @@ def test_short_hints_and_detailed_explanations_exist_for_picker_checks() -> None
 def test_spellchecker_hint_mentions_german_and_ttm_hint_mentions_hw8_specificity() -> None:
     assert "German" in check_hint(SPELLCHECKER)
     assert "HW8" in check_hint(TTMSTRUCTURE)
-    assert "different progression logic" in check_hint(TTMSTRUCTURE)
 
 
 def test_priority_hint_matches_current_check_severities() -> None:

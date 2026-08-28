@@ -65,6 +65,7 @@ def _issue(
     challenge: Mapping[str, Any],
     visualization: Mapping[str, Any],
     active_wave_ids: set[str],
+    title: str,
     message: str,
 ) -> Issue:
     wave_id = _normalise_id(visualization.get("wave"))
@@ -78,6 +79,7 @@ def _issue(
         challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title=title,
         message=message,
         url=_challenge_url(visualization, challenge),
     )
@@ -178,6 +180,7 @@ def run_native_secrets_tables(
                 challenge=challenge,
                 visualization=visualization,
                 active_wave_ids=active_wave_ids,
+				title="Task secret is missing",
                 message=(
                     f"Task '{task_name}' has no secret. "
                     f"Proposing {proposedsecret} at column 'conditions' "
@@ -224,6 +227,7 @@ def run_native_secrets_tables(
                 challenge=challenge,
                 visualization=visualization,
                 active_wave_ids=active_wave_ids,
+				title="Task secret is reused across differently named tasks",
                 message=(
                     f"Task '{first_name}' has copies with the same secret '{secret}', "
                     f"but they have different names (see challenges {challenge_refs})"

@@ -2,7 +2,7 @@
 
 from campaign_assistant.diagram import build_campaign_flow_svg
 from campaign_assistant.diagram.flow_diagram import (
-    _build_track_rows,
+    _build_component_layouts,
     _extract_edges,
     _extract_nodes,
     _group_nodes_by_track,
@@ -18,7 +18,12 @@ def test_diagram_generates_svg(minimal_analysis_result: dict) -> None:
     assert "Beginner" in svg
     assert "Balanced eater" in svg
     assert "Food master" in svg
-    assert "Orange arrows" in svg
+    assert "Direct progression" in svg
+    assert "Failure transition" in svg
+    assert (
+        "Alternative success / loop / return"
+        in svg
+)
 
 
 def test_diagram_main_progression_is_based_on_formal_success_edges(
@@ -30,7 +35,10 @@ def test_diagram_main_progression_is_based_on_formal_success_edges(
     visible_node_ids = {node.id for node in nodes}
     edges = _extract_edges(snapshot, visible_node_ids)
     grouped = _group_nodes_by_track(nodes)
-    track_rows = _build_track_rows(grouped=grouped, edges=edges)
+    component_layouts = _build_component_layouts(
+        grouped=grouped,
+        edges=edges,
+    )
 
     formal_success_pairs = {
         (edge.source, edge.target)
@@ -40,12 +48,19 @@ def test_diagram_main_progression_is_based_on_formal_success_edges(
         and edge.source != edge.target
     }
 
-    adjacent_row_pairs = set()
-    for _, _, row_nodes in track_rows:
-        for source_node, target_node in zip(row_nodes, row_nodes[1:]):
-            adjacent_row_pairs.add((source_node.id, target_node.id))
+    adjacent_spine_pairs = {
+        pair
+        for layout in component_layouts
+        for pair in zip(
+            layout.spine_ids,
+            layout.spine_ids[1:],
+        )
+    }
 
-    main_edges = adjacent_row_pairs & formal_success_pairs
+    main_edges = (
+            adjacent_spine_pairs
+            & formal_success_pairs
+    )
 
     assert ("1", "2") in main_edges
     assert ("2", "3") in main_edges

@@ -136,6 +136,7 @@ def run_native_textpointsconsistency_tables(
                 challenge_id=_normalise_id(challenge.get("id")),
                 challenge=str(_clean_scalar(challenge.get("name")) or ""),
                 wave_id=wave_id,
+                title="Task instructions and configured points do not match",
                 message=(
                     f"Task '{task_name}' mentions {rendered_text_points} point(s) in participant-facing text, "
                     f"but the exported task points value is {rendered_configured}. "

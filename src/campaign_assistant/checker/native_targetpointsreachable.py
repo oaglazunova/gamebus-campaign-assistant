@@ -94,6 +94,7 @@ def _issue(
     challenge: Mapping[str, Any],
     visualization: Mapping[str, Any],
     active_wave_ids: set[str],
+    title: str,
     message: str,
 ) -> Issue:
     wave_id = _normalise_id(visualization.get("wave"))
@@ -107,6 +108,7 @@ def _issue(
         challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title=title,
         message=message,
         url=_challenge_url(visualization, challenge),
     )
@@ -202,6 +204,7 @@ def run_native_targetpointsreachable_tables(
                     challenge=challenge,
                     visualization=visualization,
                     active_wave_ids=active_wave_ids,
+                    title="Target points are missing",
                     message="Challenge no target points defined (None).",
                 )
             )
@@ -213,6 +216,7 @@ def run_native_targetpointsreachable_tables(
                     challenge=challenge,
                     visualization=visualization,
                     active_wave_ids=active_wave_ids,
+                    title="Reachable points cannot be calculated",
                     message=(
                         "Challenge reachable points cannot be computed because required values are "
                         "missing or invalid. Check the challenge evaluation interval and the task "
@@ -228,6 +232,7 @@ def run_native_targetpointsreachable_tables(
                     challenge=challenge,
                     visualization=visualization,
                     active_wave_ids=active_wave_ids,
+                    title="Target points cannot be reached",
                     message=(
                         f"Challenge target points ({challenge_target_points}) cannot be reached "
                         f"with tasks (max reachable is {challenge_tasks_reachable_points})"

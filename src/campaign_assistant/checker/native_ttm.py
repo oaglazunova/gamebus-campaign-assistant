@@ -110,6 +110,7 @@ def _issue(
         challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title="HW8 progression structure needs review",
         message=message,
         url=_challenge_url(visualization, challenge),
     )

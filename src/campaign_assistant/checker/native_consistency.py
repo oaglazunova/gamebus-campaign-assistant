@@ -66,6 +66,7 @@ def _issue(
         challenge_id=_normalise_id(challenge.get("id")),
         challenge=str(_clean_scalar(challenge.get("name")) or ""),
         wave_id=wave_id,
+        title="Start level does not return to itself after failure",
         message=message,
         url=_challenge_url(visualization, challenge),
     )
@@ -125,6 +126,7 @@ def run_native_consistency_tables(
                     visualization=visualization,
                     challenge=challenge,
                     active_wave_ids=active_wave_ids,
+                    title="Start level does not return to itself after failure",
                     message=(
                         "Initial challenge does not lead to itself on failure "
                         f"{failure_next}"

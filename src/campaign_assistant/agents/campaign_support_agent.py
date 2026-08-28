@@ -10,7 +10,11 @@ from campaign_assistant.llm.base import LLMClient
 from campaign_assistant.agents.gamebus_studio_knowledge import (
 	gamebus_studio_field_facts_markdown_for_question,
 )
-from campaign_assistant.checker.check_metadata import PRIORITY_HINT, check_explanation
+from campaign_assistant.checker.check_metadata import (
+    PRIORITY_HINT,
+    check_explanation,
+    check_hint,
+)
 from campaign_assistant.checker.schema import FRIENDLY_CHECK_NAMES
 from campaign_assistant.agents.response_guard import uncertainty_response, _lower
 from campaign_assistant.agents.finding_explainer import explain_prepared_finding
@@ -58,13 +62,15 @@ Strict boundaries:
 - For broad questions such as "is this a good campaign?", distinguish structural checker results from content quality, theory alignment, and outcome effectiveness.
 
 Response style:
+- Start with the answer to the user's current question, not with a recap of the campaign or finding.
+- Treat information in the recent conversation as already known. Add the next useful piece of information instead of repeating the previous answer.
+- When a focused finding is selected, assume its title, check, severity, and location are already visible in the UI. Do not reproduce that metadata unless it is needed to disambiguate the answer.
+- For a meaning question, explain the practical consequence and what evidence the organizer should inspect.
+- For a fix question, use the deterministic guidance and make the inspection/change sequence clear.
+- For a follow-up question, answer only the requested follow-up. If the user asks for a shorter version, return only the shorter version.
 - Do not merely repeat the deterministic guidance verbatim.
 - Do not answer with only "Okay", "Sure", or another acknowledgement.
-- For finding explanations, use this structure:
-  1. What the checker found.
-  2. Why it matters.
-  3. What to inspect in GameBus Studio.
-  4. What to change, if the finding is valid.
+- Use short headings only when they make a multi-part answer easier to scan.
 - Keep answers practical and concise.
 - Prefer concrete field names from deterministic guidance or GameBus Studio source facts.
 
@@ -91,6 +97,65 @@ _DETERMINISTIC_GUIDANCE_QUESTION_PATTERNS = [
 
 def _normalized(text: Any) -> str:
 	return " ".join(str(text or "").lower().split())
+
+
+def _mentioned_check_id(
+    question: str,
+) -> str | None:
+    normalized = _normalized(question)
+
+    manual_aliases = {
+        "spellchecker": [
+            "spellcheck",
+            "spelling",
+            "spell checker",
+        ],
+        "visualizationintern": [
+            "visualization internals",
+            "visualisation internals",
+            "cross-visualization",
+            "cross-visualisation",
+        ],
+        "targetpointsreachable": [
+            "target points",
+            "point target",
+            "points reachable",
+        ],
+        "ttm": [
+            "ttm",
+            "transtheoretical model",
+        ],
+        "duplicatetasknames": [
+            "duplicate task",
+            "duplicated task",
+        ],
+        "textpointsconsistency": [
+            "text points",
+            "instruction points",
+        ],
+    }
+
+    for check_id, friendly_name in (
+        FRIENDLY_CHECK_NAMES.items()
+    ):
+        aliases = {
+            check_id.lower(),
+            friendly_name.lower(),
+            friendly_name.lower().replace(" ", ""),
+            friendly_name.lower().replace(" ", "_"),
+        }
+
+        aliases.update(
+            manual_aliases.get(check_id, [])
+        )
+
+        if any(
+            alias in normalized
+            for alias in aliases
+        ):
+            return check_id
+
+    return None
 
 
 def _is_weak_llm_answer(text: str) -> bool:
@@ -410,33 +475,79 @@ def _question_mentions_finding(question: str, finding: dict[str, Any]) -> bool:
 
 
 def _select_guided_finding(
-		question: str,
-		context: dict[str, Any],
+    question: str,
+    context: dict[str, Any],
 ) -> dict[str, Any] | None:
-	focused_finding = context.get("focused_finding")
-	if (
-			isinstance(focused_finding, dict)
-			and focused_finding.get("deterministic_gamebus_fix_guidance")
-	):
-		return focused_finding
+    focused_finding = context.get(
+        "focused_finding"
+    )
 
-	findings = [
-		finding
-		for finding in (context.get("top_findings", []) or [])
-		if isinstance(finding, dict)
-		   and finding.get("deterministic_gamebus_fix_guidance")
-	]
+    if (
+        isinstance(focused_finding, dict)
+        and focused_finding.get(
+            "deterministic_gamebus_fix_guidance"
+        )
+    ):
+        return focused_finding
 
-	if not findings:
-		return None
+    top_findings = [
+        finding
+        for finding in (
+            context.get("top_findings", []) or []
+        )
+        if (
+            isinstance(finding, dict)
+            and finding.get(
+                "deterministic_gamebus_fix_guidance"
+            )
+        )
+    ]
 
-	for finding in findings:
-		if _question_mentions_finding(question, finding):
-			return finding
+    representatives = context.get(
+        "representative_findings_by_check",
+        {},
+    ) or {}
 
-	# For short follow-ups such as "how can I fix this?", use the highest-priority
-	# finding only when no selected finding is available.
-	return findings[0]
+    findings = list(top_findings)
+
+    if isinstance(representatives, dict):
+        for finding in representatives.values():
+            if (
+                isinstance(finding, dict)
+                and finding.get(
+                    "deterministic_gamebus_fix_guidance"
+                )
+                and finding not in findings
+            ):
+                findings.append(finding)
+
+    if not findings:
+        return None
+
+    mentioned_check = _mentioned_check_id(
+        question
+    )
+
+    if mentioned_check:
+        for finding in findings:
+            if (
+                _normalized(finding.get("check"))
+                == mentioned_check
+            ):
+                return finding
+
+        # Do not silently substitute guidance
+        # belonging to another check.
+        return None
+
+    for finding in findings:
+        if _question_mentions_finding(
+            question,
+            finding,
+        ):
+            return finding
+
+    return findings[0]
 
 
 def _deterministic_guidance_answer(
@@ -460,6 +571,34 @@ def _deterministic_guidance_answer(
 	severity = finding.get("severity") or "unknown"
 	guidance = finding.get("deterministic_gamebus_fix_guidance")
 	source_facts = finding.get("gamebus_studio_source_facts")
+	focused_finding = context.get(
+		"focused_finding"
+	)
+	is_focused = (
+			isinstance(focused_finding, dict)
+			and finding is focused_finding
+	)
+
+	if is_focused:
+		lines = [
+			"**What to inspect or change**",
+			"",
+			str(guidance),
+		]
+
+		url = finding.get("url")
+		if url:
+			lines.extend(
+				[
+					"",
+					(
+						"[Open this challenge in "
+						f"GameBus Studio]({url})"
+					),
+				]
+			)
+
+		return "\n".join(lines)
 
 	lines = [
 		"Use the deterministic GameBus Studio guidance for this finding.",
@@ -494,6 +633,501 @@ def _deterministic_guidance_answer(
 		lines.append(str(source_facts))
 
 	return "\n".join(lines)
+
+
+def _focused_finding(
+    context: dict[str, Any],
+) -> dict[str, Any] | None:
+    finding = context.get("focused_finding")
+
+    if isinstance(finding, dict):
+        return finding
+
+    return None
+
+
+def _guidance_section(
+    markdown: Any,
+    heading: str,
+) -> list[str]:
+    lines = str(markdown or "").splitlines()
+    marker = f"**{heading}**"
+    section: list[str] = []
+    collecting = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == marker:
+            collecting = True
+            continue
+
+        if collecting and stripped.startswith("**"):
+            break
+
+        if collecting and stripped:
+            section.append(stripped)
+
+    return section
+
+
+def _verification_from_guidance(
+    markdown: Any,
+) -> str | None:
+    for line in str(markdown or "").splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("**Verify:**"):
+            return stripped.removeprefix(
+                "**Verify:**"
+            ).strip()
+
+    return None
+
+
+def _finding_count_answer(
+    check: str,
+    context: dict[str, Any],
+) -> str:
+    analysis = context.get("analysis", {}) or {}
+    counts = (
+        analysis.get(
+            "issue_count_by_check",
+            {},
+        )
+        or {}
+    )
+
+    try:
+        count = int(counts.get(check, 0) or 0)
+    except (TypeError, ValueError):
+        count = 0
+
+    try:
+        total = int(
+            analysis.get("total_issues", 0) or 0
+        )
+    except (TypeError, ValueError):
+        total = 0
+
+    friendly_name = FRIENDLY_CHECK_NAMES.get(
+        check,
+        check,
+    )
+
+    lines = [
+        (
+            f"There are **{count}** findings from "
+            f"the **{friendly_name}** check out of "
+            f"**{total}** findings in this analysis."
+        )
+    ]
+
+    if check == "duplicatetasknames":
+        lines.extend([
+            "",
+            (
+                "That is a finding count, not "
+                "necessarily a count of unique task "
+                "names; one duplicated name can "
+                "contribute more than one finding."
+            ),
+        ])
+
+    return "\n".join(lines)
+
+
+def _focused_finding_deterministic_answer(
+    question: str,
+    context: dict[str, Any],
+) -> str | None:
+    finding = _focused_finding(context)
+
+    if finding is None:
+        return None
+
+    normalized = _normalized(question)
+    check = (
+        _normalized(finding.get("check"))
+        or "unknown"
+    )
+    friendly_name = FRIENDLY_CHECK_NAMES.get(
+        check,
+        check,
+    )
+    guidance = finding.get(
+        "deterministic_gamebus_fix_guidance"
+    )
+
+    verification_patterns = [
+        (
+            r"\bhow\b.*\b(verify|confirm|know)\b"
+            r".*\b(fix|fixed|resolved|worked)\b"
+        ),
+        r"\bwhat\b.*\b(after fixing|after the fix|verify)\b",
+        r"\bhow do i test this\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in verification_patterns
+    ):
+        verification = (
+            _verification_from_guidance(guidance)
+        )
+
+        if verification:
+            return (
+                f"**How to verify**\n\n"
+                f"{verification}"
+            )
+
+        return (
+            "**How to verify**\n\n"
+            "Save the change, export the campaign "
+            "again, and rerun the same "
+            "deterministic check."
+        )
+
+    intentionality_patterns = [
+        r"\b(intentional|expected|deliberate)\b",
+        r"\bfalse positive\b",
+        r"\bcan i (ignore|dismiss)\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in intentionality_patterns
+    ):
+        check_specific = {
+            "duplicatetasknames": (
+                "Yes. The same participant-facing "
+                "task name can be intentional. Keep "
+                "it only if the different "
+                "configuration is deliberate and "
+                "clear to organizers; otherwise "
+                "align the settings or rename the "
+                "task."
+            ),
+            "spellchecker": (
+                "Possibly. Names, abbreviations, and "
+                "campaign-specific terms can be "
+                "valid even when the spelling check "
+                "flags them. Review the text before "
+                "accepting or dismissing the finding."
+            ),
+            "textpointsconsistency": (
+                "Possibly. Participant text may "
+                "mention points as an example rather "
+                "than as the actual reward. Confirm "
+                "the meaning of the text and the "
+                "configured points before changing "
+                "either one."
+            ),
+            "ttm": (
+                "Possibly. This check expects the "
+                "HW8 long-term progression pattern, "
+                "so a campaign using different "
+                "progression logic may be intentional."
+            ),
+        }
+
+        return check_specific.get(
+            check,
+            (
+                "Possibly, but the checker cannot "
+                "determine campaign intent. Confirm "
+                "the reported configuration against "
+                "the intended behavior before "
+                "changing or dismissing it."
+            ),
+        )
+
+    count_patterns = [
+        (
+            r"\bhow many\b.*\b"
+            r"(finding|findings|issue|issues|"
+            r"like this|similar)\b"
+        ),
+        (
+            r"\bare there (many|other|more)\b.*\b"
+            r"(finding|findings|issue|issues|"
+            r"like this|similar)\b"
+        ),
+        r"\bhow common\b",
+        r"\bcount\b.*\b(finding|findings|issue|issues)\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in count_patterns
+    ):
+        return _finding_count_answer(
+            check,
+            context,
+        )
+
+    severity_patterns = [
+        r"\bhow (serious|important|urgent)\b",
+        r"\bwhat\b.*\b(severity|priority)\b",
+        (
+            r"\bwhy\b.*\b(this|finding|issue)\b"
+            r".*\b(priority|prioriti[sz]ed|severity)\b"
+        ),
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in severity_patterns
+    ):
+        severity = str(
+            finding.get("severity") or "unknown"
+        )
+        rationale = finding.get(
+            "priority_rationale"
+        )
+
+        lines = [
+            (
+                f"This is a **{severity}**-severity "
+                f"**{friendly_name}** finding."
+            )
+        ]
+
+        if rationale:
+            lines.extend([
+                "",
+                f"**Priority rationale:** {rationale}",
+            ])
+
+        lines.extend([
+            "",
+            (
+                "Severity determines inspection "
+                "order; it does not prove "
+                "participant impact or whether the "
+                "configuration was intentional."
+            ),
+        ])
+
+        return "\n".join(lines)
+
+    location_patterns = [
+        r"\bwhere is (this|the) (finding|issue)\b",
+        r"\bwhere can i (find|open|see) (this|it)\b",
+        (
+            r"\bwhich\b.*\b"
+            r"(wave|visualization|challenge|level)\b"
+        ),
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in location_patterns
+    ):
+        location_fields = [
+            ("Wave", finding.get("wave_id")),
+            (
+                "Visualization",
+                finding.get("visualization"),
+            ),
+            (
+                "Visualization ID",
+                finding.get("visualization_id"),
+            ),
+            (
+                "Challenge",
+                finding.get("challenge"),
+            ),
+            (
+                "Challenge ID",
+                finding.get("challenge_id"),
+            ),
+        ]
+
+        lines = ["**Finding location**", ""]
+
+        for label, value in location_fields:
+            if value not in (None, ""):
+                lines.append(
+                    f"- **{label}:** {value}"
+                )
+
+        url = finding.get("url")
+
+        if url:
+            lines.extend([
+                "",
+                f"[Open in GameBus Studio]({url})",
+            ])
+
+        if len(lines) == 2:
+            return (
+                "No precise location is available "
+                "for this finding in the export."
+            )
+
+        return "\n".join(lines)
+
+    inspection_patterns = [
+        (
+            r"\bwhat\b.*\b(inspect|check|look at)\b"
+            r".*\bfirst\b"
+        ),
+        r"\bwhere\b.*\b(inspect|check|look)\b",
+        (
+            r"\bwhich\b.*\b"
+            r"(field|fields|setting|settings)\b"
+            r".*\b(inspect|check|compare)\b"
+        ),
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in inspection_patterns
+    ):
+        where = _guidance_section(
+            guidance,
+            "Where to check in GameBus Studio",
+        )
+        fields = _guidance_section(
+            guidance,
+            "Fields to inspect",
+        )
+
+        if where or fields:
+            lines = ["**What to inspect first**"]
+
+            if where:
+                lines.extend([
+                    "",
+                    "**Start here**",
+                    *where,
+                ])
+
+            if fields:
+                lines.extend([
+                    "",
+                    "**Compare these fields**",
+                    *fields,
+                ])
+
+            return "\n".join(lines)
+
+        # Still deterministic when a check does
+        # not have field-level guidance.
+        lines = [
+            "**What to inspect first**",
+            "",
+            str(
+                finding.get("message")
+                or finding.get("title")
+                or "Review the reported configuration."
+            ),
+        ]
+
+        for label, value in (
+            (
+                "Visualization",
+                finding.get("visualization"),
+            ),
+            (
+                "Challenge",
+                finding.get("challenge"),
+            ),
+            (
+                "Challenge ID",
+                finding.get("challenge_id"),
+            ),
+        ):
+            if value not in (None, ""):
+                lines.append(
+                    f"- **{label}:** {value}"
+                )
+
+        lines.extend([
+            "",
+            (
+                "No field-level GameBus Studio "
+                "guidance is available for this "
+                "check, so do not infer additional "
+                "fields from an LLM response."
+            ),
+        ])
+
+        return "\n".join(lines)
+
+    meaning_patterns = [
+        r"\bwhat does (this|the) (finding|issue) mean\b",
+        r"\bwhat does this mean\b",
+        r"\bexplain (this|the) (finding|issue)\b",
+        r"\bwhy\b.*\b(flagged|reported)\b",
+        r"\bwhy is this (a )?(finding|issue|problem)\b",
+    ]
+
+    if any(
+        re.search(pattern, normalized)
+        for pattern in meaning_patterns
+    ):
+        detail = (
+            finding.get("message")
+            or finding.get("title")
+        )
+        hint = check_hint(check)
+
+        lines = [
+            (
+                f"**What the {friendly_name} "
+                "check found**"
+            )
+        ]
+
+        if detail:
+            lines.extend(["", str(detail)])
+
+        if hint:
+            lines.extend(["", hint])
+
+        lines.extend([
+            "",
+            (
+                "The checker establishes the "
+                "configuration difference, but it "
+                "cannot determine whether that "
+                "difference was intentional."
+            ),
+        ])
+
+        return "\n".join(lines)
+
+    return None
+
+
+def _check_count_answer(
+    question: str,
+    context: dict[str, Any],
+) -> str | None:
+    if _focused_finding(context) is not None:
+        return None
+
+    normalized = _normalized(question)
+
+    if not re.search(
+        r"\b(how many|count|number of)\b",
+        normalized,
+    ):
+        return None
+
+    check = _mentioned_check_id(question)
+
+    if check is None:
+        return None
+
+    return _finding_count_answer(
+        check,
+        context,
+    )
+
 
 
 def _issue_summary_answer(question: str, context: dict[str, Any]) -> str | None:
@@ -669,7 +1303,7 @@ def _finding_brief_lines(finding: dict[str, Any]) -> list[str]:
 
 
 def _quick_summary_answer(context: dict[str, Any]) -> str:
-	answer = _issue_summary_answer("Summarize the issues", context)
+	answer = _issue_summary_answer("Summarize the findings", context)
 	if answer:
 		return answer
 	return "No issue summary is available in the current context."
@@ -715,7 +1349,7 @@ def _priority_reason_answer(context: dict[str, Any]) -> str:
 	rationale = finding.get("priority_rationale")
 
 	lines = [
-		"These issues are ordered by the deterministic priority score.",
+		"These findings are ordered by the deterministic priority score.",
 		"",
 		f"The first item is first because it has severity `{severity}` and belongs to the `{check}` check.",
 	]
@@ -992,7 +1626,7 @@ def _quick_explain_top_finding_answer(context: dict[str, Any]) -> str:
 
 def _quick_clean_result_answer(context: dict[str, Any]) -> str:
 	return (
-		"The selected deterministic checks did not report issues. "
+		"The selected deterministic checks found nothing. "
 		"This means the checked structural rules passed for this export. "
 		"It does not prove that the campaign is complete, effective, theory-aligned, "
 		"or free of content/design problems outside the selected checks."
@@ -1106,7 +1740,7 @@ def _fallback_without_llm(question: str, context: dict[str, Any]) -> str:
 		lines.append("")
 		lines.append(
 			"Ask `How do I fix the highest-priority finding?` "
-			"or `How do I fix the secrets issues?` to see the step-by-step fix guidance."
+			"or `How do I fix the secrets?` to see the step-by-step fix guidance."
 		)
 	else:
 		lines.append("")
@@ -1157,29 +1791,75 @@ def _format_conversation_history(history: list[dict[str, str]] | None) -> str:
 	return "\n".join(lines)
 
 
+def _focused_finding_prompt(
+    context: dict[str, Any],
+) -> str:
+    finding = context.get("focused_finding")
+
+    if not isinstance(finding, dict):
+        return (
+            "No finding is currently selected "
+            "in the UI."
+        )
+
+    return """
+    A finding is currently selected and remains visible to the
+    user in the Findings dialog.
+    - Treat the selected finding as known context.
+    - Do not restate its title, check, severity, visualization,
+      challenge, IDs, or full message.
+    - Answer the user's exact question about it.
+    - Add interpretation, implications, inspection logic, or a
+      concrete next step that is not already obvious from the
+      finding card.
+    - If deterministic GameBus Studio guidance is present, treat
+      it as authoritative and do not invent additional fields or
+      editor locations.
+    """.strip()
+
+
 
 def _llm_campaign_answer(
-		*,
-		llm_client: LLMClient,
-		question: str,
-		context: dict[str, Any],
-		conversation_history: list[dict[str, str]] | None = None,
+    *,
+    llm_client: LLMClient,
+    question: str,
+    context: dict[str, Any],
+    conversation_history: (
+        list[dict[str, str]] | None
+    ) = None,
 ) -> str | None:
-	context_markdown = format_llm_context_markdown(context)
+    context_markdown = (
+        format_llm_context_markdown(context)
+    )
 
-	field_facts = gamebus_studio_field_facts_markdown_for_question(question)
-	if field_facts:
-		context_markdown = "\n\n".join(
-			[
-				context_markdown,
-				"# Relevant GameBus Studio field facts for this question",
-				field_facts,
-			]
-		)
+    field_facts = (
+        gamebus_studio_field_facts_markdown_for_question(
+            question
+        )
+    )
 
-	conversation_text = _format_conversation_history(conversation_history)
+    if field_facts:
+        context_markdown = "\n\n".join(
+            [
+                context_markdown,
+                (
+                    "# Relevant GameBus Studio "
+                    "field facts for this question"
+                ),
+                field_facts,
+            ]
+        )
 
-	user_prompt = f"""
+    conversation_text = (
+        _format_conversation_history(
+            conversation_history
+        )
+    )
+    focused_finding_instructions = (
+        _focused_finding_prompt(context)
+    )
+
+    user_prompt = f"""
     Recent conversation:
     {conversation_text}
 
@@ -1189,29 +1869,46 @@ def _llm_campaign_answer(
     Available checker/campaign context:
     {context_markdown}
 
-    Answer the current question using the recent conversation and available campaign/checker context.
+    Finding-specific interaction instructions:
+    {focused_finding_instructions}
+
+    Answer the current question using the recent conversation
+    and available campaign/checker context.
 
     Important:
-    - If the current question says "this", "it", "that issue", or asks to make something shorter, use the recent conversation to identify the referent.
-    - If the referent is still unclear, say you are not sure and suggest a clearer question.
-    - Do not summarize the whole campaign unless the user asks for a summary or overview.
+    - If the current question says "this", "it", "that issue",
+      or asks to make something shorter, use the recent
+      conversation to identify the referent.
+    - If the referent is still unclear, say you are not sure
+      and suggest a clearer question.
+    - Do not summarize the whole campaign unless the user asks
+      for a summary or overview.
+    - Treat previous Assistant replies as already given. Do not
+      repeat them before answering the follow-up.
+    - If the user asks for a shorter or clearer version, output
+      only the revised version.
+    - An explanation must add why the finding matters, what
+      evidence to inspect, or what to do next; a paraphrase of
+      the finding alone is insufficient.
     """
 
-	response = llm_client.generate(
-		system_prompt=CAMPAIGN_SUPPORT_SYSTEM_PROMPT.strip(),
-		user_prompt=user_prompt.strip(),
-		temperature=0.2,
-	)
+    response = llm_client.generate(
+        system_prompt=(
+            CAMPAIGN_SUPPORT_SYSTEM_PROMPT.strip()
+        ),
+        user_prompt=user_prompt.strip(),
+        temperature=0.2,
+    )
 
-	if not response.available:
-		return None
+    if not response.available:
+        return None
 
-	answer = response.text.strip()
+    answer = response.text.strip()
 
-	if _is_weak_llm_answer(answer):
-		return None
+    if _is_weak_llm_answer(answer):
+        return None
 
-	return answer
+    return answer
 
 
 class CampaignSupportAgent(BaseAgent):
@@ -1219,6 +1916,7 @@ class CampaignSupportAgent(BaseAgent):
 
 	def __init__(self, llm_client: LLMClient | None = None):
 		self.llm_client = llm_client
+		self.last_answer_source = "deterministic"
 
 	def run_quick_action(
 			self,
@@ -1250,6 +1948,7 @@ class CampaignSupportAgent(BaseAgent):
 		if quick_action == "clean_result":
 			return _quick_clean_result_answer(context)
 
+
 		return uncertainty_response(
 			"I am not sure which quick action was requested. "
 			"Try asking about findings, fix guidance, campaign structure, or theory alignment."
@@ -1262,6 +1961,8 @@ class CampaignSupportAgent(BaseAgent):
 			context: dict[str, Any],
 			conversation_history: list[dict[str, str]] | None = None,
 	) -> str:
+		self.last_answer_source = "deterministic"
+
 		if _is_acknowledgement(question):
 			return (
 				"You’re welcome. Ask about a specific finding, fix guidance, "
@@ -1274,6 +1975,34 @@ class CampaignSupportAgent(BaseAgent):
 
 		if _total_issues_from_context(context) == 0 and _is_fix_or_inspection_question(question):
 			return _clean_result_fix_answer(context)
+
+		focused_answer = (
+			_focused_finding_deterministic_answer(
+				question,
+				context,
+			)
+		)
+
+		if focused_answer:
+			return focused_answer
+
+		check_count_answer = _check_count_answer(
+			question,
+			context,
+		)
+
+		if check_count_answer:
+			return check_count_answer
+
+		if (
+				_focused_finding(context) is None
+				and _is_fix_or_inspection_question(question)
+				and not _is_deterministic_guidance_question(
+			question
+		)
+		):
+			return _quick_inspect_first_answer(context)
+
 
 		combined_priority_fix_answer = _priority_reason_and_guidance_answer(question, context)
 		if combined_priority_fix_answer:
@@ -1315,6 +2044,7 @@ class CampaignSupportAgent(BaseAgent):
 				conversation_history=conversation_history,
 			)
 			if llm_answer:
+				self.last_answer_source = "llm"
 				return llm_answer
 
 		highest_priority_answer = _highest_priority_finding_answer(question, context)

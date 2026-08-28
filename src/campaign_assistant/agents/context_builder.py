@@ -146,6 +146,38 @@ def _top_findings(result: dict[str, Any], *, max_findings: int) -> list[dict[str
     return [_compact_finding(issue) for issue in sorted_issues[:max_findings]]
 
 
+def _representative_findings_by_check(
+    result: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Keep one prioritized finding per check for deterministic follow-ups."""
+    issues = _as_list(result.get("prioritized_issues"))
+    dict_issues = [
+        issue
+        for issue in issues
+        if isinstance(issue, dict)
+    ]
+
+    sorted_issues = sorted(
+        dict_issues,
+        key=lambda issue: (
+            _severity_rank(issue),
+            _active_wave_rank(issue),
+            _string(issue.get("check")),
+            _issue_title(issue),
+        ),
+    )
+
+    representatives: dict[str, dict[str, Any]] = {}
+
+    for issue in sorted_issues:
+        check = _string(issue.get("check"))
+
+        if check and check not in representatives:
+            representatives[check] = _compact_finding(issue)
+
+    return representatives
+
+
 def _findings_by_check_summary(result: dict[str, Any]) -> dict[str, Any]:
     summary = _as_dict(result.get("summary"))
     issue_count_by_check = _as_dict(summary.get("issue_count_by_check"))
@@ -318,7 +350,13 @@ def build_llm_context(
             "issue_count_by_check": _findings_by_check_summary(result),
             "severity_counts": _as_dict(summary.get("severity_counts")),
         },
-        "top_findings": _top_findings(result, max_findings=max_findings),
+        "top_findings": _top_findings(
+            result,
+            max_findings=max_findings,
+        ),
+        "representative_findings_by_check": (
+            _representative_findings_by_check(result)
+        ),
         "campaign_structure": {
             "counts": counts,
             "waves": _compact_waves(snapshot, max_items=max_waves),
@@ -364,7 +402,7 @@ def format_llm_context_markdown(context: dict[str, Any]) -> str:
     lines.append("")
     lines.append("# Analysis summary")
     lines.append(f"- Checks run: {', '.join(str(x) for x in analysis.get('checks_run', []))}")
-    lines.append(f"- Total issues: {analysis.get('total_issues', 0)}")
+    lines.append(f"- Total findings: {analysis.get('total_issues', 0)}")
     lines.append(f"- Failed checks: {', '.join(str(x) for x in analysis.get('failed_checks', [])) or 'None'}")
     lines.append(f"- Errored checks: {', '.join(str(x) for x in analysis.get('errored_checks', [])) or 'None'}")
 

@@ -38,14 +38,14 @@ THEORY_SPECIFIC_CHECKS = [
 # Checks that are visible in the normal check picker.
 # This list includes optional checks that are intentionally disabled by default.
 CHECK_PICKER_CHECKS = [
-    SECRETS,
-    SPELLCHECKER,
     REACHABILITY,
     CONSISTENCY,
-    VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
+    VISUALIZATIONINTERN,
+    SECRETS,
     TEXTPOINTSCONSISTENCY,
     DUPLICATETASKNAMES,
+    SPELLCHECKER,
     TTMSTRUCTURE,
 ]
 
@@ -57,6 +57,7 @@ DEFAULT_CHECKS = [
     VISUALIZATIONINTERN,
     TARGETPOINTSREACHABLE,
     TEXTPOINTSCONSISTENCY,
+    DUPLICATETASKNAMES,
 ]
 
 # Complete supported runtime check list.
@@ -68,15 +69,15 @@ ALL_CHECKS = [
 
 # Human-friendly names for UI display.
 FRIENDLY_CHECK_NAMES = {
-    REACHABILITY: "Reachability",
-    CONSISTENCY: "Consistency",
-    VISUALIZATIONINTERN: "Visualization internals",
-    TARGETPOINTSREACHABLE: "Target points reachable",
-    SECRETS: "Secrets",
-    SPELLCHECKER: "Spellchecker",
-    TTMSTRUCTURE: "TTM structure",
-    TEXTPOINTSCONSISTENCY: "Text vs points consistency",
-    DUPLICATETASKNAMES: "Duplicate task names",
+    REACHABILITY: "Progression levels' reachability",
+    CONSISTENCY: "Start-level fallback",
+    VISUALIZATIONINTERN: "Cross-visualization/level transitions",
+    TARGETPOINTSREACHABLE: "Point target feasibility",
+    SECRETS: "Task SECRET configuration",
+    SPELLCHECKER: "Spelling",
+    TTMSTRUCTURE: "TTM progression structure for HW8",
+    TEXTPOINTSCONSISTENCY: "Instruction–points consistency",
+    DUPLICATETASKNAMES: "Duplicate task configuration",
 }
 
 # Used for issue prioritization.
@@ -105,6 +106,7 @@ class Issue:
     wave_id: Any
     message: str
     url: str
+    title: str = ""
 
     @property
     def priority_score(self) -> int:
@@ -124,6 +126,7 @@ class Issue:
             "challenge_id": self.challenge_id,
             "challenge": self.challenge,
             "wave_id": self.wave_id,
+            "title": self.title or self.message,
             "message": self.message,
             "url": self.url,
             "priority_score": self.priority_score,

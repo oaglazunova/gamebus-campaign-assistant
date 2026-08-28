@@ -74,7 +74,7 @@ def _normalize_issue(issue: dict[str, Any], fallback_check: str | None = None) -
     normalized["check"] = _issue_check(normalized, fallback=fallback_check)
     normalized["severity"] = _issue_severity(normalized)
 
-    if "title" not in normalized:
+    if not normalized.get("title"):
         normalized["title"] = _issue_title(normalized)
 
     return normalized

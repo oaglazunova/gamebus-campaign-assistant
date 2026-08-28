@@ -122,9 +122,15 @@ def test_selected_finding_follow_up_uses_matching_fix_guidance(
     agent = CampaignSupportAgent(llm_client=BadLLM())
     answer = agent.run(question="How do I fix this?", context=context)
 
-    assert "Use the deterministic GameBus Studio guidance" in answer
-    assert "Terminal Challenge not reachable from any initial challenge" in answer
+    assert "**What to inspect or change**" in answer
     assert "Connect this terminal level to an initial success path" in answer
+    assert "**Where to check in GameBus Studio**" in answer
+    assert "**How to fix**" in answer
+
+    # The selected finding is already visible in the dialog, so its title and
+    # old developer-facing introduction should not be repeated.
+    assert "Terminal Challenge not reachable from any initial challenge" not in answer
+    assert "Use the deterministic GameBus Studio guidance" not in answer
 
 
 def test_general_field_question_adds_gamebus_field_facts_to_llm_context(

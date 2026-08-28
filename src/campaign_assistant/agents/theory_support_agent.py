@@ -45,10 +45,17 @@ Strict boundaries:
 - Do not modify or generate campaign files.
 - Do not present theory feedback as deterministic checker output.
 - If the campaign context is insufficient, say what information would be needed.
+- Do not discuss checker repair guidance unless the current question explicitly asks for it.
 
 Required framing:
 - Start theory-alignment answers by saying: "This is advisory theory-oriented feedback, not formal validation."
 - Use cautious wording such as "appears to", "may support", "could be strengthened by", "the export suggests".
+- Answer the current question directly after the required advisory sentence.
+- Treat recent Assistant replies as already known and do not repeat them before addressing a follow-up.
+- When a focused finding is present, assume its metadata is already visible and discuss only the theory/design implication requested by the user.
+- Do not repeat campaign counts or generic descriptions of all supported frameworks unless they are directly relevant.
+- For improvement questions, provide a short prioritized set of concrete design actions and state what campaign evidence should be reviewed.
+- If the user asks for a shorter or clearer version, return only the revised version after the required advisory sentence.
 - Keep answers practical and concise.
 
 {THEORY_UNCERTAINTY_RULES}
@@ -471,11 +478,58 @@ def _is_improvement_question(question: str) -> bool:
     ) or any(phrase in normalized for phrase in improvement_phrases)
 
 
+
+def _context_for_theory_prompt(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    safe_context = dict(context)
+
+    safe_context.pop(
+        "focused_finding",
+        None,
+    )
+    safe_context.pop(
+        "representative_findings_by_check",
+        None,
+    )
+
+    # Checker repair instructions are not
+    # theory-design evidence.
+    safe_context["top_findings"] = []
+
+    return safe_context
+
+
+def _theory_answer_drifted(
+    question: str,
+    answer: str,
+) -> bool:
+    if not mentions_specific_theory(question):
+        return False
+
+    normalized = _normalized(answer)
+
+    checker_repair_phrases = (
+        "duplicate task",
+        "secret condition",
+        "gamebus studio fix guidance",
+        "finding-specific interaction instructions",
+        "target points reachable check",
+        "tbm system",
+    )
+
+    return any(
+        phrase in normalized
+        for phrase in checker_repair_phrases
+    )
+
+
 class TheorySupportAgent(BaseAgent):
     name = "theory_support_agent"
 
     def __init__(self, llm_client: LLMClient | None = None):
         self.llm_client = llm_client
+        self.last_answer_source = "deterministic"
         self.theory_knowledge = load_theory_knowledge_pack()
 
     def run(
@@ -485,6 +539,7 @@ class TheorySupportAgent(BaseAgent):
             context: dict[str, Any],
             conversation_history: list[dict[str, str]] | None = None,
     ) -> str:
+        self.last_answer_source = "deterministic"
         if (
                 is_broad_theory_grounding_question(question)
                 and not mentions_specific_theory(question)
@@ -515,7 +570,13 @@ class TheorySupportAgent(BaseAgent):
 
         # Use the LLM for theory explanation, synthesis, and improvement advice when available.
         if self.llm_client is not None:
-            context_markdown = format_llm_context_markdown(context)
+            context_markdown = (
+                format_llm_context_markdown(
+                    _context_for_theory_prompt(
+                        context
+                    )
+                )
+            )
 
             conversation_text = _format_conversation_history(conversation_history)
 
@@ -541,6 +602,11 @@ class TheorySupportAgent(BaseAgent):
             - If the user gave extra design context in the recent conversation, use it cautiously and say that it is user-provided context.
             - If the export is insufficient, explain what extra design information would be needed.
             - Do not invent task content, feedback text, participant choices, or stage logic.
+            - Treat previous Assistant replies as already given. Answer only the new question or requested refinement.
+            - Do not discuss checker findings or GameBus Studio repair guidance unless the current question explicitly asks how they relate to theory.
+            - Do not repeat campaign structure counts unless the current question depends on them.
+            - For improvement advice, prioritize 3-5 concrete actions and identify the evidence the organizer should review for each action.
+            - If the user asks for a shorter or clearer version, output only that revised version after the required advisory sentence.
             """
 
             response = self.llm_client.generate(
@@ -552,10 +618,17 @@ class TheorySupportAgent(BaseAgent):
             if response.available:
                 answer = response.text.strip()
 
-                if not _is_weak_llm_answer(answer):
+                if (
+                        not _is_weak_llm_answer(answer)
+                        and not _theory_answer_drifted(
+                    question,
+                    answer,
+                )
+                ):
                     required_prefix = "This is advisory theory-oriented feedback, not formal validation."
                     if required_prefix.lower() not in answer.lower():
                         answer = required_prefix + "\n\n" + answer
+                    self.last_answer_source = "llm"
                     return answer
 
         # Deterministic theory fallbacks only when LLM is unavailable or weak.

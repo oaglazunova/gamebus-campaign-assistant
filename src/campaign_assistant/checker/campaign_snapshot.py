@@ -169,6 +169,12 @@ def _extract_challenges(challenges: pd.DataFrame | None, *, max_items: int) -> l
             "description": _get_text(row, columns, "description", "desc"),
             "visualization_id": _get_number(row, columns, "visualizations", "visualization", "visualization_id"),
             "target_points": _get_number(row, columns, "target", "target_points", "targetpoints"),
+            "is_initial_level": _get(
+                row,
+                columns,
+                "is_initial_level",
+                "isinitiallevel",
+            ),
             "success_next": _get_number(row, columns, "success_next", "successnext", "success"),
             "failure_next": _get_number(row, columns, "failure_next", "fail_next", "failure", "failure_next_id"),
             "start": _get_text(row, columns, "start", "start_date", "date_start"),
