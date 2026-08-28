@@ -20,7 +20,242 @@ from campaign_assistant.ui.assistant_chat import (
 
 
 _QUOTED_VALUE_PATTERN = re.compile(r"'([^'\n]+)'")
-_FINDINGS_PAGE_SIZE = 30
+_FINDINGS_PER_CHECK_PAGE = 10
+_FINDINGS_PAGE_KEY_PREFIX = "findings-check-page-"
+
+
+def _reset_findings_check_pages() -> None:
+    for key in list(st.session_state):
+        if str(key).startswith(
+            _FINDINGS_PAGE_KEY_PREFIX
+        ):
+            st.session_state.pop(key, None)
+
+
+def _set_findings_check_page(
+    page_key: str,
+    page: int,
+) -> None:
+    st.session_state[page_key] = page
+
+
+def _pagination_tokens(
+    current_page: int,
+    total_pages: int,
+) -> list[int | None]:
+    if total_pages <= 7:
+        return list(range(1, total_pages + 1))
+
+    if current_page <= 4:
+        return [
+            1,
+            2,
+            3,
+            4,
+            5,
+            None,
+            total_pages,
+        ]
+
+    if current_page >= total_pages - 3:
+        return [
+            1,
+            None,
+            total_pages - 4,
+            total_pages - 3,
+            total_pages - 2,
+            total_pages - 1,
+            total_pages,
+        ]
+
+    return [
+        1,
+        None,
+        current_page - 1,
+        current_page,
+        current_page + 1,
+        None,
+        total_pages,
+    ]
+
+
+def _render_check_pagination_controls(
+    *,
+    check_id: str,
+    current_page: int,
+    total_pages: int,
+    position: str,
+) -> None:
+    if total_pages <= 1:
+        return
+
+    page_key = (
+        f"{_FINDINGS_PAGE_KEY_PREFIX}{check_id}"
+    )
+
+    tokens = _pagination_tokens(
+        current_page,
+        total_pages,
+    )
+
+    control_count = len(tokens) + 2
+
+    controls_area, _ = st.columns(
+        [control_count, 12],
+        gap="small",
+    )
+
+    with controls_area:
+        columns = st.columns(
+            control_count,
+            gap="small",
+        )
+
+        with columns[0]:
+            st.button(
+                "‹",
+                key=(
+                    f"{page_key}-{position}-previous"
+                ),
+                help="Previous page",
+                disabled=current_page == 1,
+                use_container_width=True,
+                on_click=_set_findings_check_page,
+                args=(
+                    page_key,
+                    max(1, current_page - 1),
+                ),
+            )
+
+        for index, token in enumerate(
+            tokens,
+            start=1,
+        ):
+            with columns[index]:
+                if token is None:
+                    st.markdown(
+                        (
+                            "<div style='text-align:center;"
+                            "padding-top:0.45rem'>…</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    continue
+
+                st.button(
+                    str(token),
+                    key=(
+                        f"{page_key}-{position}-"
+                        f"page-{token}"
+                    ),
+                    type=(
+                        "primary"
+                        if token == current_page
+                        else "secondary"
+                    ),
+                    use_container_width=True,
+                    on_click=_set_findings_check_page,
+                    args=(page_key, token),
+                )
+
+        with columns[-1]:
+            st.button(
+                "›",
+                key=(
+                    f"{page_key}-{position}-next"
+                ),
+                help="Next page",
+                disabled=(
+                    current_page == total_pages
+                ),
+                use_container_width=True,
+                on_click=_set_findings_check_page,
+                args=(
+                    page_key,
+                    min(
+                        total_pages,
+                        current_page + 1,
+                    ),
+                ),
+            )
+
+
+def _paginate_check_findings(
+    check_id: str,
+    issues: list[dict[str, Any]],
+) -> tuple[
+    list[dict[str, Any]],
+    int,
+    int,
+    int,
+]:
+    total_findings = len(issues)
+
+    total_pages = max(
+        1,
+        (
+            total_findings
+            + _FINDINGS_PER_CHECK_PAGE
+            - 1
+        )
+        // _FINDINGS_PER_CHECK_PAGE,
+    )
+
+    page_key = (
+        f"{_FINDINGS_PAGE_KEY_PREFIX}{check_id}"
+    )
+
+    if total_pages == 1:
+        st.session_state.pop(page_key, None)
+
+        st.caption(
+            f"Showing all {total_findings} findings."
+        )
+
+        return issues, 1, 1, 1
+
+    try:
+        current_page = int(
+            st.session_state.get(page_key, 1)
+        )
+    except (TypeError, ValueError):
+        current_page = 1
+
+    current_page = min(
+        max(current_page, 1),
+        total_pages,
+    )
+
+    st.session_state[page_key] = current_page
+
+    start_index = (
+        current_page - 1
+    ) * _FINDINGS_PER_CHECK_PAGE
+
+    end_index = min(
+        start_index + _FINDINGS_PER_CHECK_PAGE,
+        total_findings,
+    )
+
+    st.caption(
+        f"Showing findings "
+        f"{start_index + 1}–{end_index} "
+        f"of {total_findings}."
+    )
+
+    _render_check_pagination_controls(
+        check_id=check_id,
+        current_page=current_page,
+        total_pages=total_pages,
+        position="top",
+    )
+
+    return (
+        issues[start_index:end_index],
+        start_index + 1,
+        current_page,
+        total_pages,
+    )
 
 
 def _clean_display_text(value: Any) -> str:
@@ -55,33 +290,49 @@ def _normalize_issue(issue: dict[str, Any], fallback_check: str | None = None) -
     return normalized
 
 
-def _collect_issues(result: dict[str, Any]) -> list[dict[str, Any]]:
+def _collect_issues(
+    result: dict[str, Any],
+) -> list[dict[str, Any]]:
     """
-    Collect issues from the current checker result.
+    Prefer the complete issues-by-check collection.
 
-    Supports both:
-    - result["prioritized_issues"]
-    - result["issues_by_check"]
+    Fall back to prioritized issues for older result formats.
     """
     issues: list[dict[str, Any]] = []
 
-    prioritized = result.get("prioritized_issues", []) or []
-    if isinstance(prioritized, list):
-        for item in prioritized:
-            if isinstance(item, dict):
-                issues.append(_normalize_issue(item))
+    by_check = result.get(
+        "issues_by_check",
+        {},
+    ) or {}
 
-    if issues:
-        return issues
-
-    by_check = result.get("issues_by_check", {}) or {}
     if isinstance(by_check, dict):
         for check_id, check_issues in by_check.items():
             if not isinstance(check_issues, list):
                 continue
+
             for item in check_issues:
                 if isinstance(item, dict):
-                    issues.append(_normalize_issue(item, fallback_check=str(check_id)))
+                    issues.append(
+                        _normalize_issue(
+                            item,
+                            fallback_check=str(check_id),
+                        )
+                    )
+
+    if issues:
+        return issues
+
+    prioritized = result.get(
+        "prioritized_issues",
+        [],
+    ) or []
+
+    if isinstance(prioritized, list):
+        for item in prioritized:
+            if isinstance(item, dict):
+                issues.append(
+                    _normalize_issue(item)
+                )
 
     return issues
 
@@ -242,31 +493,99 @@ def _truncate_label(value: str, max_length: int = 40) -> str:
     return value[: max_length - 1].rstrip() + "…"
 
 
-def _wave_filter_options(issues: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    waves: dict[str, bool] = {}
+def _short_wave_date(value: Any) -> str:
+    text = str(value or "").strip()
+
+    if not text:
+        return ""
+
+    if re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+
+    return text
+
+
+def _wave_filter_options(
+    issues: list[dict[str, Any]],
+    result: dict[str, Any],
+) -> list[tuple[str, str]]:
+    issue_wave_status: dict[str, bool] = {}
 
     for issue in issues:
-        wave_id = _filter_id(issue.get("wave_id"))
+        wave_id = _filter_id(
+            issue.get("wave_id")
+        )
+
         if not wave_id:
             continue
 
-        is_active = bool(issue.get("active_wave"))
-        waves[wave_id] = waves.get(wave_id, False) or is_active
+        issue_wave_status[wave_id] = (
+            issue_wave_status.get(wave_id, False)
+            or bool(issue.get("active_wave"))
+        )
 
-    def _sort_key(item: tuple[str, bool]) -> tuple[int, str]:
+    wave_details: dict[str, dict[str, Any]] = {}
+
+    raw_waves = result.get("waves", []) or []
+
+    if isinstance(raw_waves, list):
+        for wave in raw_waves:
+            if not isinstance(wave, dict):
+                continue
+
+            wave_id = _filter_id(wave.get("id"))
+
+            if wave_id:
+                wave_details[wave_id] = wave
+
+    def sort_key(
+        item: tuple[str, bool],
+    ) -> tuple[int, str]:
         wave_id, _ = item
+
         try:
-            return (0, f"{int(wave_id):010d}")
+            return 0, f"{int(wave_id):010d}"
         except ValueError:
-            return (1, wave_id.lower())
+            return 1, wave_id.lower()
 
     options: list[tuple[str, str]] = []
 
-    for wave_id, is_active in sorted(waves.items(), key=_sort_key):
-        label = f"Wave {wave_id}"
-        if is_active:
-            label += " (active)"
-        options.append((wave_id, label))
+    for wave_id, issue_active in sorted(
+        issue_wave_status.items(),
+        key=sort_key,
+    ):
+        wave = wave_details.get(wave_id, {})
+
+        start = _short_wave_date(
+            wave.get("start")
+        )
+        end = _short_wave_date(
+            wave.get("end")
+        )
+
+        active = (
+            bool(wave.get("active_now"))
+            or issue_active
+        )
+
+        label_parts: list[str] = []
+
+        if start or end:
+            label_parts.append(
+                f"{start or '?'} - {end or '?'}"
+            )
+
+        label_parts.append(f"#{wave_id}")
+
+        if active:
+            label_parts.append("Active")
+
+        options.append(
+            (
+                wave_id,
+                " ".join(label_parts),
+            )
+        )
 
     return options
 
@@ -288,11 +607,15 @@ def _visualization_filter_options(
         key = visualization_id or visualization_name
 
         if visualization_name and visualization_id:
-            label = f"{display_name} ({visualization_id})"
+            label = (
+                f"{display_name} (#{visualization_id})"
+            )
         elif visualization_name:
             label = display_name
         else:
-            label = f"Visualization {visualization_id}"
+            label = (
+                f"Visualization #{visualization_id}"
+            )
 
         visualizations[key] = label
 
@@ -454,7 +777,10 @@ def render_issues_panel(result: dict[str, Any]) -> None:
     check_label_to_id = {"All": "All"}
     check_label_to_id.update({_check_label(check): check for check in checks})
 
-    wave_options = _wave_filter_options(issues)
+    wave_options = _wave_filter_options(
+        issues,
+        result,
+    )
     wave_labels = dict(wave_options)
 
     visualization_options = _visualization_filter_options(issues)
@@ -478,6 +804,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
             options=severity_options,
             index=0,
             key="findings-severity-filter",
+            on_change=_reset_findings_check_pages,
         )
 
     with filter_col2:
@@ -486,6 +813,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
             options=check_options,
             index=0,
             key="findings-check-filter",
+            on_change=_reset_findings_check_pages,
         )
 
     with filter_col3:
@@ -495,6 +823,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
             format_func=lambda value: (
                 "All waves" if value == "" else wave_labels[value]
             ),
+            on_change=_reset_findings_check_pages,
             key="findings-wave-filter",
         )
 
@@ -507,6 +836,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 if value == ""
                 else visualization_labels[value]
             ),
+            on_change=_reset_findings_check_pages,
             key="findings-visualization-filter",
         )
 
@@ -516,6 +846,7 @@ def render_issues_panel(result: dict[str, Any]) -> None:
             value="",
             key="findings-search-query",
             placeholder="Search by message, challenge, visualization, or check",
+            on_change=_reset_findings_check_pages,
         ).strip().lower()
 
 
@@ -565,54 +896,20 @@ def render_issues_panel(result: dict[str, Any]) -> None:
         st.info("No findings match the selected filters.")
         return
 
-    total_filtered = len(filtered)
-    total_pages = max(
-        1,
-        (
-                total_filtered
-                + _FINDINGS_PAGE_SIZE
-                - 1
-        )
-        // _FINDINGS_PAGE_SIZE,
-    )
+    grouped: dict[
+        str,
+        list[dict[str, Any]],
+    ] = defaultdict(list)
 
-    page_key = "findings-results-page"
-    page_options = list(range(1, total_pages + 1))
-
-    if st.session_state.get(page_key) not in page_options:
-        st.session_state.pop(page_key, None)
-
-    if total_pages > 1:
-        page = st.selectbox(
-            "Results page",
-            options=page_options,
-            format_func=lambda value: (
-                f"Page {value} of {total_pages}"
-            ),
-            key=page_key,
-        )
-    else:
-        page = 1
-
-    start_index = (page - 1) * _FINDINGS_PAGE_SIZE
-    end_index = min(
-        start_index + _FINDINGS_PAGE_SIZE,
-        total_filtered,
-    )
-    visible_issues = filtered[start_index:end_index]
-
-    st.caption(
-        f"Showing findings {start_index + 1}–{end_index} "
-        f"of {total_filtered} matching findings "
-        f"({len(issues)} total)."
-    )
-
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-
-    for issue in visible_issues:
+    for issue in filtered:
         grouped[
             str(issue.get("check") or "unknown")
         ].append(issue)
+
+    st.caption(
+        f"Showing {len(filtered)} of {len(issues)} findings "
+        f"across {len(grouped)} check(s)."
+    )
 
     expand_group = len(grouped) == 1
 
@@ -633,7 +930,20 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                 ),
                 expanded=expand_group,
         ):
-            for idx, issue in enumerate(check_issues, start=1):
+            (
+                page_issues,
+                first_finding_number,
+                current_page,
+                total_pages,
+            ) = _paginate_check_findings(
+                check_id,
+                check_issues,
+            )
+
+            for idx, issue in enumerate(
+                    page_issues,
+                    start=first_finding_number,
+            ):
                 heading, details = _issue_heading_and_details(issue)
                 severity = _severity(issue)
 
@@ -689,6 +999,13 @@ def render_issues_panel(result: dict[str, Any]) -> None:
                     )
 
                 st.divider()
+
+            _render_check_pagination_controls(
+                check_id=check_id,
+                current_page=current_page,
+                total_pages=total_pages,
+                position="bottom",
+            )
 
     if dialog_request is not None:
         focused_finding, dialog_heading = dialog_request
