@@ -715,6 +715,68 @@ def _layout_component(
 
 			continue
 
+		# A malformed progression can contain a non-initial challenge that has
+		# outgoing transitions back into the visible progression but no incoming
+		# transition from it. Such a node is structurally unreachable, but placing
+		# it at column 0 makes the diagram harder to read. Keep it near the levels
+		# it points to; reachability checking is responsible for reporting that it
+		# cannot actually be reached.
+		reverse_candidate_edges = [
+			edge
+			for edge in component_edges
+			if edge.source in unplaced
+			   and edge.target in positions
+			   and edge.source != edge.target
+		]
+
+		if reverse_candidate_edges:
+			reverse_sources = sorted(
+				{edge.source for edge in reverse_candidate_edges},
+				key=_safe_node_id_sort_key,
+			)
+			reverse_source = reverse_sources[0]
+
+			outgoing_to_positioned = [
+				edge
+				for edge in reverse_candidate_edges
+				if edge.source == reverse_source
+			]
+
+			target_columns = [
+				positions[edge.target][0]
+				for edge in outgoing_to_positioned
+			]
+
+			min_target_column = min(target_columns)
+			max_target_column = max(target_columns)
+
+			if min_target_column == max_target_column:
+				branch_start_column = max(
+					0,
+					min_target_column - 1,
+				)
+			else:
+				branch_start_column = (
+											  min_target_column + max_target_column
+									  ) // 2
+
+			preferred_lane = (
+				1
+				if any(
+					_is_failure_transition(edge.transition_type)
+					for edge in outgoing_to_positioned
+				)
+				else -1
+			)
+
+			place_branch_chain(
+				start_id=reverse_source,
+				start_column=branch_start_column,
+				preferred_lane=preferred_lane,
+			)
+
+			continue
+
 		# Defensive fallback for a malformed or incompletely connected export.
 		remaining_id = min(
 			unplaced,

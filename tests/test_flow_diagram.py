@@ -65,3 +65,91 @@ def test_diagram_main_progression_is_based_on_formal_success_edges(
     assert ("1", "2") in main_edges
     assert ("2", "3") in main_edges
     assert main_edges.issubset(formal_success_pairs)
+
+
+def test_reverse_attached_unreachable_branch_is_placed_near_its_targets() -> None:
+    snapshot = {
+        "visualizations": [
+            {
+                "id": 10,
+                "name": "Progression",
+            },
+        ],
+        "challenges": [
+            {
+                "id": 1,
+                "name": "Beginner",
+                "visualization_id": 10,
+                "is_initial_level": True,
+            },
+            {
+                "id": 2,
+                "name": "Proficient",
+                "visualization_id": 10,
+                "is_initial_level": False,
+            },
+            {
+                "id": 3,
+                "name": "Skilled",
+                "visualization_id": 10,
+                "is_initial_level": False,
+            },
+            {
+                "id": 99,
+                "name": "Skilled at risk",
+                "visualization_id": 10,
+                "is_initial_level": False,
+            },
+        ],
+        "tasks": [],
+        "transitions": [
+            {
+                "source_challenge_id": 1,
+                "target_challenge_id": 2,
+                "transition_type": "success",
+            },
+            {
+                "source_challenge_id": 2,
+                "target_challenge_id": 3,
+                "transition_type": "success",
+            },
+            # Challenge 99 has no incoming transition, so it is unreachable.
+            # It nevertheless points back to two neighbouring progression levels.
+            {
+                "source_challenge_id": 99,
+                "target_challenge_id": 3,
+                "transition_type": "success",
+            },
+            {
+                "source_challenge_id": 99,
+                "target_challenge_id": 2,
+                "transition_type": "failure",
+            },
+        ],
+    }
+
+    nodes = _extract_nodes(snapshot)
+    edges = _extract_edges(
+        snapshot,
+        {node.id for node in nodes},
+    )
+    grouped = _group_nodes_by_track(nodes)
+
+    layouts = _build_component_layouts(
+        grouped=grouped,
+        edges=edges,
+    )
+
+    placements = {
+        node.id: (column, lane)
+        for layout in layouts
+        for node, column, lane in layout.placements
+    }
+
+    assert placements["1"] == (0, 0)
+    assert placements["2"] == (2, 0)
+    assert placements["3"] == (4, 0)
+
+    # The unreachable branch should be displayed next to the levels it
+    # references, rather than being pushed to the beginning of the row.
+    assert placements["99"] == (3, 1)
