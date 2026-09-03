@@ -106,7 +106,11 @@ def _extract_campaign_name(campaigns: pd.DataFrame | None) -> str | None:
     )
 
 
-def _extract_waves(waves: pd.DataFrame | None, *, max_items: int) -> list[dict[str, Any]]:
+def _extract_waves(
+    waves: pd.DataFrame | None,
+    *,
+    max_items: int | None = None,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
 
     if waves is None:
@@ -128,7 +132,11 @@ def _extract_waves(waves: pd.DataFrame | None, *, max_items: int) -> list[dict[s
     return items
 
 
-def _extract_visualizations(visualizations: pd.DataFrame | None, *, max_items: int) -> list[dict[str, Any]]:
+def _extract_visualizations(
+    visualizations: pd.DataFrame | None,
+    *,
+    max_items: int | None = None,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
 
     if visualizations is None:
@@ -154,7 +162,11 @@ def _extract_visualizations(visualizations: pd.DataFrame | None, *, max_items: i
     return items
 
 
-def _extract_challenges(challenges: pd.DataFrame | None, *, max_items: int) -> list[dict[str, Any]]:
+def _extract_challenges(
+    challenges: pd.DataFrame | None,
+    *,
+    max_items: int | None = None,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
 
     if challenges is None:
@@ -188,7 +200,11 @@ def _extract_challenges(challenges: pd.DataFrame | None, *, max_items: int) -> l
     return items
 
 
-def _extract_tasks(tasks: pd.DataFrame | None, *, max_items: int) -> list[dict[str, Any]]:
+def _extract_tasks(
+    tasks: pd.DataFrame | None,
+    *,
+    max_items: int | None = None,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
 
     if tasks is None:
@@ -300,14 +316,15 @@ def build_campaign_snapshot(
     file_path: str | Path,
     *,
     checks_run: list[str] | None = None,
-    max_items: int = 80,
 ) -> dict[str, Any]:
     """
-    Build a compact, export-derived campaign snapshot.
+    Build the authoritative export-derived campaign snapshot.
 
-    This is designed for UI summaries and future LLM agent context. It should
-    remain compact and should not expose the full workbook contents.
+    The snapshot is intentionally complete for the structural sheets used by
+    the Overview and flow diagram. Any consumer that needs a smaller payload,
+    such as the LLM context builder, must compact the snapshot explicitly.
     """
+
     file_path = Path(file_path)
 
     snapshot: dict[str, Any] = {
@@ -355,10 +372,10 @@ def build_campaign_snapshot(
         )
 
     campaign_name = _extract_campaign_name(campaigns)
-    waves_data = _extract_waves(waves, max_items=max_items)
-    visualizations_data = _extract_visualizations(visualizations, max_items=max_items)
-    challenges_data = _extract_challenges(challenges, max_items=max_items)
-    tasks_data = _extract_tasks(tasks, max_items=max_items)
+    waves_data = _extract_waves(waves)
+    visualizations_data = _extract_visualizations(visualizations)
+    challenges_data = _extract_challenges(challenges)
+    tasks_data = _extract_tasks(tasks)
 
     snapshot["campaign_name"] = campaign_name
     snapshot["waves"] = waves_data

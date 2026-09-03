@@ -314,6 +314,37 @@ def _compact_transitions(snapshot: dict[str, Any], *, max_items: int) -> list[di
     return compact
 
 
+def _compact_task_summary_by_challenge(
+    snapshot: dict[str, Any],
+    *,
+    challenge_ids: set[str],
+) -> dict[str, dict[str, Any]]:
+    summaries = _as_dict(snapshot.get("task_summary_by_challenge"))
+    compact: dict[str, dict[str, Any]] = {}
+
+    for challenge_id in sorted(challenge_ids):
+        summary = _as_dict(summaries.get(challenge_id))
+        if not summary:
+            continue
+
+        task_names = [
+            _string(name)
+            for name in _as_list(summary.get("task_names"))[:5]
+            if _string(name)
+        ]
+
+        compact[challenge_id] = {
+            "task_count": int(summary.get("task_count", 0) or 0),
+            "total_points_if_all_tasks_completed_once": summary.get(
+                "total_points_if_all_tasks_completed_once"
+            ),
+            "task_names": task_names,
+        }
+
+    return compact
+
+
+
 def build_llm_context(
     result: dict[str, Any],
     *,
@@ -334,6 +365,16 @@ def build_llm_context(
     summary = _as_dict(result.get("summary"))
     snapshot = _as_dict(result.get("campaign_snapshot"))
     counts = _as_dict(snapshot.get("counts"))
+
+    compact_challenges = _compact_challenges(
+        snapshot,
+        max_items=max_challenges,
+    )
+    compact_challenge_ids = {
+        _string(item.get("id"))
+        for item in compact_challenges
+        if isinstance(item, dict) and item.get("id") is not None
+    }
 
     return {
         "campaign": {
@@ -361,10 +402,13 @@ def build_llm_context(
             "counts": counts,
             "waves": _compact_waves(snapshot, max_items=max_waves),
             "visualizations": _compact_visualizations(snapshot, max_items=max_visualizations),
-            "challenges": _compact_challenges(snapshot, max_items=max_challenges),
+            "challenges": compact_challenges,
             "tasks": _compact_tasks(snapshot, max_items=max_tasks),
             "transitions": _compact_transitions(snapshot, max_items=max_transitions),
-            "task_summary_by_challenge": _as_dict(snapshot.get("task_summary_by_challenge")),
+            "task_summary_by_challenge": _compact_task_summary_by_challenge(
+                snapshot,
+                challenge_ids=compact_challenge_ids,
+            ),
         },
         "warnings": {
             "snapshot_extraction_warnings": _as_list(snapshot.get("extraction_warnings")),
