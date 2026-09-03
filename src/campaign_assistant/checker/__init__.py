@@ -14,6 +14,7 @@ from campaign_assistant.checker.schema import (
     TTMSTRUCTURE,
     UNIVERSAL_CHECKS,
     VISUALIZATIONINTERN,
+    PROGRESSIONBRANCHCONSISTENCY,
 )
 
 
@@ -44,6 +45,7 @@ __all__ = [
     "TTMSTRUCTURE",
     "UNIVERSAL_CHECKS",
     "VISUALIZATIONINTERN",
+    "PROGRESSIONBRANCHCONSISTENCY",
     "run_campaign_checks",
     "export_issues_to_excel",
     "summarize_result",

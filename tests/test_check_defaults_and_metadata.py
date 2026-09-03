@@ -17,6 +17,7 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
 )
@@ -34,6 +35,7 @@ def test_default_checks_include_actionable_checks_but_exclude_optional_checks() 
         REACHABILITY,
         CONSISTENCY,
         VISUALIZATIONINTERN,
+        PROGRESSIONBRANCHCONSISTENCY,
         TARGETPOINTSREACHABLE,
         TEXTPOINTSCONSISTENCY,
         DUPLICATETASKNAMES,
@@ -56,6 +58,7 @@ def test_priority_hint_matches_current_check_severities() -> None:
     assert "reachability = high" in PRIORITY_HINT
     assert "consistency = high" in PRIORITY_HINT
     assert "visualization internals = medium" in PRIORITY_HINT
+    assert "success/fallback path consistency = medium" in PRIORITY_HINT
     assert "target points reachable = high" in PRIORITY_HINT
     assert "secrets = medium" in PRIORITY_HINT
     assert "spellchecker = low" in PRIORITY_HINT

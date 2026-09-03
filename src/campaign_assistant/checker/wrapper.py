@@ -25,6 +25,7 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
 )
@@ -38,12 +39,18 @@ from campaign_assistant.checker.table_utils import (
 )
 from campaign_assistant.checker.native_duplicatetasknames import run_native_duplicatetasknames_tables
 from campaign_assistant.checker.native_textpointsconsistency import run_native_textpointsconsistency_tables
+from campaign_assistant.checker.native_progressionbranchconsistency import (
+    run_native_progressionbranchconsistency_tables,
+)
 
 
 NATIVE_CHECK_RUNNERS = {
     REACHABILITY: run_native_reachability_tables,
     CONSISTENCY: run_native_consistency_tables,
     VISUALIZATIONINTERN: run_native_visualizationintern_tables,
+    PROGRESSIONBRANCHCONSISTENCY: (
+        run_native_progressionbranchconsistency_tables
+    ),
     SECRETS: run_native_secrets_tables,
     SPELLCHECKER: run_native_spellchecker_tables,
     TARGETPOINTSREACHABLE: run_native_targetpointsreachable_tables,

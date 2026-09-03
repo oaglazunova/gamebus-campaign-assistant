@@ -8,6 +8,7 @@ from campaign_assistant.checker.schema import (
     TARGETPOINTSREACHABLE,
     TTMSTRUCTURE,
     VISUALIZATIONINTERN,
+    PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
 )
@@ -47,6 +48,10 @@ CHECK_HINTS: dict[str, str] = {
     VISUALIZATIONINTERN: (
         "Checks if progression transitions stay within the expected visualization and level structure."
     ),
+    PROGRESSIONBRANCHCONSISTENCY: (
+        "Checks if a lower-target fallback/recovery level is also placed "
+        "directly on the normal success path."
+    ),
     TARGETPOINTSREACHABLE: (
         "Checks if participants can earn enough points to reach each level's "
         "configured target within its timing and repetition settings."
@@ -67,9 +72,9 @@ CHECK_HINTS: dict[str, str] = {
 
 PRIORITY_HINT = (
     "Findings are prioritized by priority_score = severity_score + active_wave_boost. "
-    "The severity_score is each issue's check severity: reachability = high, "
-    "consistency = high, visualization internals = medium, target points reachable = high, "
-    "secrets = medium, spellchecker = low, TTM structure = medium. "
+    "The severity_score is each issue's check severity: reachability = high, target points reachable = high,"
+    "consistency = high, visualization internals = medium, success/fallback path consistency = medium, "
+    "secrets = medium, TTM structure = medium, spellchecker = low. "
     "Scores: high = 300, medium = 200, low = 100, active_wave_boost = +50 when the wave is active."
 )
 
@@ -120,6 +125,22 @@ CHECK_EXPLANATIONS: dict[str, str] = {
         "points back to itself. Each reachable terminal challenge is compared with the initial challenge. "
         "If the reachable terminal challenge is not in the same visualization or does not have the same "
         "`labels` value, an issue is reported. Severity: medium."
+    ),
+    PROGRESSIONBRANCHCONSISTENCY: (
+        "**Success/fallback path consistency check** reads the "
+        "`visualizations`, `challenges`, and `waves` sheets. "
+        "It examines progression visualizations for a recovery-like "
+        "three-level pattern. A candidate level is considered "
+        "recovery-like when it succeeds to the next level, fails back "
+        "to the previous level, the next level fails back to the "
+        "candidate, and the candidate has a lower point target than "
+        "both neighbouring levels. The check reports the candidate "
+        "when successful completion of the previous level also leads "
+        "directly to that candidate, placing a fallback/recovery level "
+        "on the normal success path. This is a structural advisory "
+        "check: such a topology can be intentional, so the organizer "
+        "should confirm the intended progression before changing it. "
+        "Severity: medium."
     ),
     TARGETPOINTSREACHABLE: (
         "**Target points reachable check** reads the `tasks`, `challenges`, `visualizations`, and `waves` sheets. "

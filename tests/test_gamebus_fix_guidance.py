@@ -3,7 +3,11 @@ from campaign_assistant.checker.gamebus_fix_guidance import (
     gamebus_fix_guidance_markdown_for_issue,
     get_gamebus_fix_guidance,
 )
-from campaign_assistant.checker.schema import DEFAULT_CHECKS, TARGETPOINTSREACHABLE
+from campaign_assistant.checker.schema import (
+    DEFAULT_CHECKS,
+    TARGETPOINTSREACHABLE,
+    PROGRESSIONBRANCHCONSISTENCY,
+)
 
 
 def test_guidance_exists_for_all_default_checks():
@@ -162,4 +166,18 @@ def test_duplicate_secret_gets_specific_guidance():
     assert "Conditions → Value" in text
     assert "distinct SECRET value" in text
 
-    
+
+def test_progression_branch_consistency_guidance_mentions_relevant_level_fields():
+    guidance = get_gamebus_fix_guidance(
+        PROGRESSIONBRANCHCONSISTENCY
+    )
+
+    assert guidance is not None
+    text = guidance.as_markdown()
+
+    assert "recovery" in text.lower()
+    assert "Next level when target is met on time" in text
+    assert "Next level when target is not met on time" in text
+    assert "Target points" in text
+    assert "previous" in text.lower()
+    assert "next normal level" in text.lower()
