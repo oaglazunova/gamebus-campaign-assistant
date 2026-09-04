@@ -4,6 +4,7 @@ from campaign_assistant.agents.campaign_support_agent import CampaignSupportAgen
 from campaign_assistant.agents.context_builder import build_llm_context
 
 
+
 def _result_with_terminal_reachability_issue(base: dict) -> dict:
     result = base.copy()
     result["summary"] = dict(base["summary"])

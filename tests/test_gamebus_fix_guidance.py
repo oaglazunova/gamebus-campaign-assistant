@@ -197,3 +197,21 @@ def test_unreachable_progression_level_gets_specific_guidance():
     assert "Next level when target is met on time" in text
     assert "Next level when target is not met on time" in text
     assert "outgoing transitions do not make a level reachable" in text
+
+
+def test_multiple_secret_conditions_get_specific_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "secrets",
+            "message": (
+                "Task 'Info-Muncher' contains 2 SECRET conditions: "
+                "[SECRET, DIFFERENT, nmbc], "
+                "[SECRET, EQUAL, Info-Muncher]."
+            ),
+        }
+    )
+
+    assert "Keep one intended SECRET condition on this task" in text
+    assert "Property = SECRET" in text
+    assert "Operator = EQUAL" in text
+    assert "non-SECRET conditions" in text

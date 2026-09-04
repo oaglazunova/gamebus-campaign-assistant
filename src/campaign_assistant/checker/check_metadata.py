@@ -32,8 +32,9 @@ from campaign_assistant.checker.schema import (
 
 CHECK_HINTS: dict[str, str] = {
     SECRETS: (
-        "Checks if GameBus Studio tasks have the required secret configuration "
-        "and if the same secret is reused inconsistently."
+        "Checks task SECRET conditions for missing SECRET EQUAL values, "
+        "multiple SECRET conditions on one task, and reused SECRET values "
+        "that may cause different tasks to react to the same activity."
     ),
     SPELLCHECKER: (
         "Only for German: checks spelling for task and challenge names. May be slow."
@@ -82,12 +83,21 @@ PRIORITY_HINT = (
 
 CHECK_EXPLANATIONS: dict[str, str] = {
     SECRETS: (
-        "**Secrets check** reads the `tasks`, `challenges`, `visualizations`, and `waves` sheets. "
-        "For each row in `tasks` where `dataproviders == 'GameBus Studio'`, the check parses the task "
-        "conditions and extracts bracketed triples such as `[SECRET, EQUAL, value]`. "
-        "A task is reported if no `SECRET/EQUAL` triple is found; the proposed secret is generated from "
-        "the task name by replacing spaces and some special characters. If the same secret is used by "
-        "more than one task with different names, a duplicate-secret issue is reported. "
+        "**Task SECRET configuration check** reads GameBus Studio tasks "
+        "from the campaign export and inspects their `conditions`. "
+        "GameBus conditions are exported as triples such as "
+        "`[SECRET, EQUAL, value]`. "
+        "The check reports a task when it has no `SECRET EQUAL` condition, "
+        "when more than one condition on the same task uses the `SECRET` "
+        "property, or when the same `SECRET EQUAL` value is reused across "
+        "differently named tasks. "
+        "Multiple SECRET conditions on one task are reported because the "
+        "task rule should use one intended `[SECRET, EQUAL, value]` "
+        "condition; additional SECRET conditions can make rule matching "
+        "behave unexpectedly. "
+        "Duplicate SECRET reuse across tasks is reported separately and "
+        "may require organizer confirmation because reuse can sometimes "
+        "be intentional. "
         "Severity: medium."
     ),
     SPELLCHECKER: (

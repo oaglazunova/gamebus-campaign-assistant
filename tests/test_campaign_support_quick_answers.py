@@ -4,6 +4,12 @@ from typing import Any
 
 from campaign_assistant.agents.campaign_support_agent import CampaignSupportAgent
 from campaign_assistant.agents.context_builder import build_llm_context
+from campaign_assistant.checker.schema import (
+    FRIENDLY_CHECK_NAMES,
+    REACHABILITY,
+    SPELLCHECKER,
+    TTMSTRUCTURE,
+)
 
 
 class FailingLLM:
@@ -161,9 +167,9 @@ def test_all_checks_question_does_not_trigger_fix_guidance(minimal_analysis_resu
     answer = agent.run(question="What do the checks check?", context=context)
 
     assert "deterministic checks inspect" in answer
-    assert "Reachability" in answer
-    assert "Spellchecker" in answer
-    assert "TTM structure" in answer
+    assert FRIENDLY_CHECK_NAMES[REACHABILITY] in answer
+    assert FRIENDLY_CHECK_NAMES[SPELLCHECKER] in answer
+    assert FRIENDLY_CHECK_NAMES[TTMSTRUCTURE] in answer
     assert "Use the deterministic GameBus Studio guidance" not in answer
 
 

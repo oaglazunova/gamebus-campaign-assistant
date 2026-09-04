@@ -115,6 +115,18 @@ def condition_triples_find_secret(triples: list[list[str]]) -> str | None:
     return None
 
 
+def condition_triples_find_all_secrets(
+    triples: list[list[str]],
+) -> list[list[str]]:
+    """Return all exported condition triples whose property is SECRET."""
+    return [
+        triple
+        for triple in triples
+        if len(triple) >= 3
+        and str(triple[0]).strip() == "SECRET"
+    ]
+
+
 def _proposed_secret_from_task_name(task_name: Any) -> str:
     return (
         str(_clean_scalar(task_name) or "")
@@ -151,20 +163,63 @@ def run_native_secrets_tables(
         if _clean_scalar(task.get("dataproviders")) != GAMEBUS_STUDIO:
             continue
 
-        secret = condition_triples_find_secret(
-            parse_conditions_into_triples(task.get("conditions"))
+        condition_triples = parse_conditions_into_triples(
+            task.get("conditions")
         )
+        secret_triples = condition_triples_find_all_secrets(
+            condition_triples
+        )
+        secret = condition_triples_find_secret(
+            condition_triples
+        )
+
+        challenge = challenges.get(
+            _normalise_id(task.get("challenge")) or ""
+        )
+        visualization = (
+            _first_existing_visualization(
+                challenge,
+                visualizations,
+            )
+            if challenge is not None
+            else None
+        )
+
+        if len(secret_triples) > 1:
+            if challenge is not None and visualization is not None:
+                task_name = _clean_scalar(task.get("name")) or ""
+
+                formatted_conditions = ", ".join(
+                    f"[{', '.join(triple)}]"
+                    for triple in secret_triples
+                )
+
+                issues.append(
+                    _issue(
+                        challenge=challenge,
+                        visualization=visualization,
+                        active_wave_ids=active_wave_ids,
+                        title="Task has multiple SECRET conditions",
+                        message=(
+                            f"Task '{task_name}' contains "
+                            f"{len(secret_triples)} SECRET conditions: "
+                            f"{formatted_conditions}. "
+                            "A GameBus Studio task should use one "
+                            "[SECRET, EQUAL, value] condition. "
+                            "Multiple SECRET conditions can prevent the task "
+                            "rule from behaving as intended. "
+                            "Keep the intended SECRET EQUAL condition and "
+                            "remove redundant or conflicting SECRET conditions. "
+                            f"Export row={row_idx + 2}."
+                        ),
+                    )
+                )
 
         if secret is not None:
             secretchecks.setdefault(secret, []).append(task)
             continue
 
-        challenge = challenges.get(_normalise_id(task.get("challenge")) or "")
-        if challenge is None:
-            continue
-
-        visualization = _first_existing_visualization(challenge, visualizations)
-        if visualization is None:
+        if challenge is None or visualization is None:
             continue
 
         task_name = _clean_scalar(task.get("name")) or ""

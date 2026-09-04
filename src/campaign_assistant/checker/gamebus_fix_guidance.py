@@ -342,6 +342,39 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
     message = _issue_message_lower(issue)
 
     if check == SECRETS:
+        title = str(issue.get("title") or "").lower()
+
+        if (
+                "multiple secret conditions" in title
+                or re.search(
+            r"\b(?:has|contains)\s+\d+\s+secret conditions\b",
+            message,
+        )
+        ):
+            return GameBusFixGuidance(
+                title="Keep one intended SECRET condition on this task",
+                studio_location=(
+                    "Open the finding URL, or open GameBus Studio campaign editor manually.",
+                    "Open the reported campaign, visualization/group, and challenge/level.",
+                    "In the Tasks section, open the reported task.",
+                    "Use the task Conditions section.",
+                ),
+                fields_to_check=(
+                    "Review every condition whose Property is SECRET.",
+                    "For the intended task secret, use Property = SECRET and Operator = EQUAL.",
+                    "Check the Value of the intended SECRET EQUAL condition.",
+                    "Also preserve any unrelated non-SECRET conditions that are still required by the task.",
+                ),
+                fix_steps=(
+                    "Identify which SECRET value is intended to identify this task/activity.",
+                    "Keep one condition with Property = SECRET, Operator = EQUAL, and that intended value.",
+                    "Remove additional SECRET conditions that are redundant or conflict with the intended secret.",
+                    "Do not delete conditions for other properties merely because they appear in the same task.",
+                    "Save the task and verify that only one SECRET condition remains.",
+                ),
+                verification=_GENERIC_VERIFICATION,
+            ).as_markdown()
+
         if "has no secret" in message:
             return GameBusFixGuidance(
                 title="Add a missing secret condition to this task",
@@ -358,10 +391,11 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
                     "Allowed activity types and Allowed data sources, if SECRET is not available in the Property selector.",
                 ),
                 fix_steps=(
-                    "Add a condition row with Property = SECRET and Operator = EQUAL.",
-                    "Use the proposed secret value as a starting point, but check that it is meaningful and unique for this task.",
-                    "Do not delete other task conditions unless they are actually wrong.",
-                    "If SECRET is not available as a condition property, check the task's allowed activity types and data sources first.",
+                    "If the finding says the task has no secret, add a condition with Property = SECRET, Operator = EQUAL, and a task-specific Value.",
+                    "If the task has multiple SECRET conditions, identify the intended SECRET EQUAL condition and remove redundant or conflicting SECRET conditions. Do not remove unrelated non-SECRET conditions.",
+                    "If the finding says the same secret is used by tasks with different names, review whether the reuse is intentional before changing it.",
+                    "If genuinely different tasks should react independently, give them different SECRET values.",
+                    "If SECRET is not available in the Property selector, check the task's Allowed activity types and Allowed data sources because the editor filters available properties from those selections.",
                 ),
                 verification=_GENERIC_VERIFICATION,
             ).as_markdown()
