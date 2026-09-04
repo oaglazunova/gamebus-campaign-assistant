@@ -16,9 +16,11 @@ TTMSTRUCTURE = "ttm"
 # Additional campaign-quality checks.
 TEXTPOINTSCONSISTENCY = "textpointsconsistency"
 DUPLICATETASKNAMES = "duplicatetasknames"
+CAMPAIGNMETADATA = "campaignmetadata"
 
 # Checks that can be computed from the campaign export itself.
 UNIVERSAL_CHECKS = [
+    CAMPAIGNMETADATA,
     SECRETS,
     SPELLCHECKER,
     TEXTPOINTSCONSISTENCY,
@@ -48,6 +50,7 @@ CHECK_PICKER_CHECKS = [
     SECRETS,
     TEXTPOINTSCONSISTENCY,
     DUPLICATETASKNAMES,
+    CAMPAIGNMETADATA,
     SPELLCHECKER,
     TTMSTRUCTURE,
 ]
@@ -62,6 +65,7 @@ DEFAULT_CHECKS = [
     TARGETPOINTSREACHABLE,
     TEXTPOINTSCONSISTENCY,
     DUPLICATETASKNAMES,
+    CAMPAIGNMETADATA,
 ]
 
 # Complete supported runtime check list.
@@ -83,6 +87,7 @@ FRIENDLY_CHECK_NAMES = {
     TEXTPOINTSCONSISTENCY: "Instruction–points consistency",
     DUPLICATETASKNAMES: "Duplicate task configuration",
     PROGRESSIONBRANCHCONSISTENCY: "Success/fallback path consistency",
+    CAMPAIGNMETADATA: "Campaign metadata completeness",
 }
 
 # Used for issue prioritization.
@@ -97,6 +102,7 @@ SEVERITY_BY_CHECK = {
     TTMSTRUCTURE: "medium",
     TEXTPOINTSCONSISTENCY: "medium",
     DUPLICATETASKNAMES: "medium",
+    CAMPAIGNMETADATA: "low",
 }
 
 

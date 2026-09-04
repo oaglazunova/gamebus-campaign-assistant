@@ -15,6 +15,7 @@ from campaign_assistant.checker.schema import (
     UNIVERSAL_CHECKS,
     VISUALIZATIONINTERN,
     PROGRESSIONBRANCHCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 
 
@@ -46,6 +47,7 @@ __all__ = [
     "UNIVERSAL_CHECKS",
     "VISUALIZATIONINTERN",
     "PROGRESSIONBRANCHCONSISTENCY",
+    "CAMPAIGNMETADATA",
     "run_campaign_checks",
     "export_issues_to_excel",
     "summarize_result",

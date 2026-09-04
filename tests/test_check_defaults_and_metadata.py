@@ -20,6 +20,7 @@ from campaign_assistant.checker.schema import (
     PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 
 
@@ -39,6 +40,7 @@ def test_default_checks_include_actionable_checks_but_exclude_optional_checks() 
         TARGETPOINTSREACHABLE,
         TEXTPOINTSCONSISTENCY,
         DUPLICATETASKNAMES,
+        CAMPAIGNMETADATA,
     ]
 
 
@@ -64,3 +66,4 @@ def test_priority_hint_matches_current_check_severities() -> None:
     assert "spellchecker = low" in PRIORITY_HINT
     assert "TTM structure = medium" in PRIORITY_HINT
     assert "active_wave_boost = +50" in PRIORITY_HINT
+    assert "campaign metadata = low" in PRIORITY_HINT

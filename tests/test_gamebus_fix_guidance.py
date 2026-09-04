@@ -7,6 +7,7 @@ from campaign_assistant.checker.schema import (
     DEFAULT_CHECKS,
     TARGETPOINTSREACHABLE,
     PROGRESSIONBRANCHCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 
 
@@ -215,3 +216,20 @@ def test_multiple_secret_conditions_get_specific_guidance():
     assert "Property = SECRET" in text
     assert "Operator = EQUAL" in text
     assert "non-SECRET conditions" in text
+
+
+def test_campaign_metadata_guidance_explains_useful_description_context():
+    guidance = get_gamebus_fix_guidance(
+        CAMPAIGNMETADATA
+    )
+
+    assert guidance is not None
+
+    text = guidance.as_markdown()
+
+    assert "Campaign → Description" in text
+    assert "target age group" in text
+    assert "country or setting" in text
+    assert "language" in text
+    assert "mandatory checklist" in text
+    assert "content generation" in text

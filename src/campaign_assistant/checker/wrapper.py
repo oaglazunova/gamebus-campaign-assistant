@@ -28,6 +28,7 @@ from campaign_assistant.checker.schema import (
     PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 from campaign_assistant.checker.table_utils import (
     _active_wave_ids,
@@ -41,6 +42,9 @@ from campaign_assistant.checker.native_duplicatetasknames import run_native_dupl
 from campaign_assistant.checker.native_textpointsconsistency import run_native_textpointsconsistency_tables
 from campaign_assistant.checker.native_progressionbranchconsistency import (
     run_native_progressionbranchconsistency_tables,
+)
+from campaign_assistant.checker.native_campaignmetadata import (
+    run_native_campaignmetadata_tables,
 )
 
 
@@ -57,6 +61,7 @@ NATIVE_CHECK_RUNNERS = {
     TTMSTRUCTURE: run_native_ttm_tables,
     TEXTPOINTSCONSISTENCY: run_native_textpointsconsistency_tables,
     DUPLICATETASKNAMES: run_native_duplicatetasknames_tables,
+    CAMPAIGNMETADATA: run_native_campaignmetadata_tables,
 }
 
 

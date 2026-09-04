@@ -11,6 +11,7 @@ from campaign_assistant.checker.schema import (
     PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 
 
@@ -70,13 +71,17 @@ CHECK_HINTS: dict[str, str] = {
         "Checks if tasks with the same participant-facing name have different "
         "configurations - that may indicate an inconsistent copy."
     ),
+    CAMPAIGNMETADATA: (
+        "Checks if the campaign has a description with useful context "
+        "for understanding and reusing the campaign."
+    ),
 }
 
 PRIORITY_HINT = (
     "Findings are prioritized by priority_score = severity_score + active_wave_boost. "
     "The severity_score is each issue's check severity: reachability = high, target points reachable = high,"
     "consistency = high, visualization internals = medium, success/fallback path consistency = medium, "
-    "secrets = medium, TTM structure = medium, spellchecker = low. "
+    "secrets = medium, TTM structure = medium, campaign metadata = low, spellchecker = low. "
     "Scores: high = 300, medium = 200, low = 100, active_wave_boost = +50 when the wave is active."
 )
 
@@ -198,6 +203,20 @@ CHECK_EXPLANATIONS: dict[str, str] = {
         "duplicated tasks differ in meaningful fields, such as points, conditions, provider, reward limits, reset "
         "window, or challenge. Exact duplicates are not reported by this check. The goal is to find copied tasks "
         "that look identical to participants but behave differently internally. Severity: medium."
+    ),
+    CAMPAIGNMETADATA: (
+        "**Campaign metadata completeness check** reads the `campaigns` sheet. "
+        "It currently checks whether the campaign `description` is present and "
+        "contains non-whitespace text. A missing description is reported as a "
+        "low-severity finding. "
+        "The description should briefly explain the campaign's purpose and "
+        "target population. Where relevant, useful contextual metadata can "
+        "include the target age group, country or setting, language, campaign "
+        "objective, and important design assumptions. These are recommendations "
+        "for useful context rather than separately required fields. "
+        "Maintaining this information can support later campaign review, "
+        "comparison, adaptation, automated analysis, and content generation. "
+        "Severity: low."
     ),
 }
 

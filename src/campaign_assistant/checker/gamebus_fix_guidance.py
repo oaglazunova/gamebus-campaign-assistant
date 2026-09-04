@@ -15,6 +15,7 @@ from campaign_assistant.checker.schema import (
     PROGRESSIONBRANCHCONSISTENCY,
     DUPLICATETASKNAMES,
     TEXTPOINTSCONSISTENCY,
+    CAMPAIGNMETADATA,
 )
 
 
@@ -274,6 +275,25 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
             "If they are meant to be the same task, align the relevant settings: points, reward count, reset window, allowed activity types, data sources, and conditions.",
             "If the same name is intentionally reused with different settings across levels, keep it but treat the finding as a warning.",
             "This check reports only duplicate names with meaningful setting differences; exact duplicates are not reported.",
+        ),
+        verification=_GENERIC_VERIFICATION,
+    ),
+    CAMPAIGNMETADATA: GameBusFixGuidance(
+        title="Add useful campaign context",
+        studio_location=(
+            "Open GameBus Studio campaign editor.",
+            "Open the campaign.",
+            "Open the campaign-level settings where the campaign name and description are configured.",
+        ),
+        fields_to_check=(
+            "Campaign → Description.",
+        ),
+        fix_steps=(
+            "Add a short description explaining the purpose of the campaign and who it is intended for.",
+            "Where relevant, include useful context such as target age group, country or setting, language, campaign objective, and important design assumptions.",
+            "Treat these as examples of useful metadata rather than a mandatory checklist.",
+            "Keep the description understandable to another campaign organizer who did not participate in the original campaign design.",
+            "Consider including context that would also help later campaign comparison, adaptation, automated analysis, or content generation.",
         ),
         verification=_GENERIC_VERIFICATION,
     ),
