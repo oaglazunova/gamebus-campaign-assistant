@@ -42,6 +42,9 @@ from campaign_assistant.checker.table_utils import (
 
 REACHABILITY_INITIAL_ERROR = "Initial Challenge without terminal challenge"
 REACHABILITY_TERMINAL_ERROR = "Terminal Challenge not reachable from any initial challenge"
+REACHABILITY_LEVEL_ERROR = (
+    "Progression level not reachable from any initial challenge"
+)
 
 WorkbookTables = Mapping[str, pd.DataFrame]
 
@@ -54,40 +57,62 @@ def load_reachability_tables(file_path: str | Path) -> dict[str, pd.DataFrame]:
     }
 
 
-def _success_next(
-    challenge: Mapping[str, Any],
+def _reachable_ids(
+    start_challenges: list[Mapping[str, Any]],
     challenges: Mapping[str, dict[str, Any]],
-) -> dict[str, Any] | None:
-    return challenges.get(_normalise_id(challenge.get("success_next")) or "")
+    *,
+    allowed_ids: set[str],
+    transition_fields: tuple[str, ...],
+) -> set[str]:
+    """
+    Return challenge ids reachable from the supplied start challenges.
 
+    Only transitions whose targets belong to ``allowed_ids`` are followed.
+    This keeps reachability local to the progression visualization currently
+    being checked.
 
-def _reachable(
-    from_challenge: Mapping[str, Any],
-    to_challenge: Mapping[str, Any],
-    challenges: Mapping[str, dict[str, Any]],
-    visited_ids: set[str] | None = None,
-) -> bool:
-    visited_ids = set() if visited_ids is None else set(visited_ids)
+    ``transition_fields`` determines which transition types count:
+    - ("success_next",) follows the normal success progression only.
+    - ("success_next", "failure_next") follows the complete structural graph.
+    """
+    pending = [
+        challenge_id
+        for challenge in start_challenges
+        if (
+            challenge_id := _normalise_id(
+                challenge.get("id")
+            )
+        ) is not None
+        and challenge_id in allowed_ids
+    ]
 
-    if _same_id(from_challenge.get("id"), to_challenge.get("id")):
-        return True
+    reachable: set[str] = set()
 
-    from_id = _normalise_id(from_challenge.get("id"))
-    if from_id is None:
-        return False
+    while pending:
+        challenge_id = pending.pop()
 
-    if from_id in visited_ids:
-        return False
-    visited_ids.add(from_id)
+        if challenge_id in reachable:
+            continue
 
-    if _is_terminal(from_challenge, challenges):
-        return False
+        challenge = challenges.get(challenge_id)
+        if challenge is None:
+            continue
 
-    next_challenge = _success_next(from_challenge, challenges)
-    if next_challenge is None:
-        return False
+        reachable.add(challenge_id)
 
-    return _reachable(next_challenge, to_challenge, challenges, visited_ids)
+        for field in transition_fields:
+            target_id = _normalise_id(
+                challenge.get(field)
+            )
+
+            if (
+                target_id is not None
+                and target_id in allowed_ids
+                and target_id not in reachable
+            ):
+                pending.append(target_id)
+
+    return reachable
 
 
 def _issue_from_native(
@@ -171,10 +196,98 @@ def run_native_reachability_tables(
             if _is_terminal(challenge, challenges)
         ]
 
+        visualization_challenge_ids = {
+            challenge_id
+            for challenge in visualization_challenges
+            if (
+                   challenge_id := _normalise_id(
+                       challenge.get("id")
+                   )
+               ) is not None
+        }
+
+        # ---------------------------------------------------------
+        # 1. Structural reachability
+        #
+        # Every configured progression level should be reachable
+        # from at least one configured start level through some
+        # valid progression route. Both success and failure
+        # transitions count here, because fallback / at-risk
+        # branches are legitimate parts of the progression graph.
+        # ---------------------------------------------------------
+        structurally_reachable_ids = _reachable_ids(
+            initials,
+            challenges,
+            allowed_ids=visualization_challenge_ids,
+            transition_fields=(
+                "success_next",
+                "failure_next",
+            ),
+        )
+
+        for challenge in visualization_challenges:
+            challenge_id = _normalise_id(
+                challenge.get("id")
+            )
+
+            if (
+                    challenge_id is None
+                    or challenge_id
+                    in structurally_reachable_ids
+            ):
+                continue
+
+            issues.append(
+                _issue_from_native(
+                    visualization=visualization,
+                    challenge=challenge,
+                    active_wave_ids=active_wave_ids,
+                    title=(
+                        "Level cannot be reached from a "
+                        "configured start level"
+                    ),
+                    message=(
+                        f"{REACHABILITY_LEVEL_ERROR}. "
+                        "This level cannot be reached from any "
+                        "configured start level by following "
+                        "success or failure transitions within "
+                        "this progression. Check whether an "
+                        "earlier level should transition to it, "
+                        "for example through a failure/recovery "
+                        "path, or whether the level is obsolete."
+                    ),
+                )
+            )
+
+        # ---------------------------------------------------------
+        # 2. Successful completion
+        #
+        # Structural reachability is not enough: each configured
+        # start level must also have a normal success route to at
+        # least one terminal level. Failure transitions deliberately
+        # do not count for this part.
+        # ---------------------------------------------------------
+        terminal_ids = {
+            terminal_id
+            for terminal in terminals
+            if (
+                   terminal_id := _normalise_id(
+                       terminal.get("id")
+                   )
+               ) is not None
+        }
+
         for initial in initials:
-            reaches_any_terminal = any(
-                _reachable(initial, terminal, challenges)
-                for terminal in terminals
+            success_reachable_ids = _reachable_ids(
+                [initial],
+                challenges,
+                allowed_ids=visualization_challenge_ids,
+                transition_fields=("success_next",),
+            )
+
+            reaches_any_terminal = bool(
+                terminal_ids
+                & success_reachable_ids
             )
 
             if not reaches_any_terminal:
@@ -183,25 +296,20 @@ def run_native_reachability_tables(
                         visualization=visualization,
                         challenge=initial,
                         active_wave_ids=active_wave_ids,
-                        title="No terminal level is reachable from this start level",
-                        message=REACHABILITY_INITIAL_ERROR,
-                    )
-                )
-
-        for terminal in terminals:
-            reached_from_any_initial = any(
-                _reachable(initial, terminal, challenges)
-                for initial in initials
-            )
-
-            if not reached_from_any_initial:
-                issues.append(
-                    _issue_from_native(
-                        visualization=visualization,
-                        challenge=terminal,
-                        active_wave_ids=active_wave_ids,
-                        title="This terminal level cannot be reached from a start level",
-                        message=REACHABILITY_TERMINAL_ERROR,
+                        title=(
+                            "No terminal level is reachable "
+                            "through the success path"
+                        ),
+                        message=(
+                            f"{REACHABILITY_INITIAL_ERROR}. "
+                            "Following the normal success "
+                            "transitions from this start level "
+                            "does not reach any terminal level "
+                            "in the same progression. Check the "
+                            "success transitions and make sure "
+                            "the normal completion path "
+                            "eventually reaches an end level."
+                        ),
                     )
                 )
 

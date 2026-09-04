@@ -99,7 +99,7 @@ def test_generic_guidance_is_used_when_issue_subtype_is_unknown():
         }
     )
 
-    assert "Fix unreachable start or terminal levels" in text
+    assert "Fix unreachable progression levels" in text
     assert "Next level when target is met on time" in text
 
 
@@ -181,3 +181,19 @@ def test_progression_branch_consistency_guidance_mentions_relevant_level_fields(
     assert "Target points" in text
     assert "previous" in text.lower()
     assert "next normal level" in text.lower()
+
+def test_unreachable_progression_level_gets_specific_guidance():
+    text = gamebus_fix_guidance_markdown_for_issue(
+        {
+            "check": "reachability",
+            "message": (
+                "Progression level not reachable from any initial challenge. "
+                "This level cannot be reached from any configured start level."
+            ),
+        }
+    )
+
+    assert "Connect this unreachable level to the progression" in text
+    assert "Next level when target is met on time" in text
+    assert "Next level when target is not met on time" in text
+    assert "outgoing transitions do not make a level reachable" in text

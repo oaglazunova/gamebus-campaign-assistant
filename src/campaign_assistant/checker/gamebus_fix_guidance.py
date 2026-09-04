@@ -101,7 +101,7 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
         verification=_GENERIC_VERIFICATION,
     ),
     REACHABILITY: GameBusFixGuidance(
-        title="Fix unreachable start or terminal levels",
+        title="Fix unreachable progression levels",
         studio_location=(
             "Open GameBus Studio campaign editor.",
             "Open the campaign and the visualization/group shown in the finding.",
@@ -109,16 +109,29 @@ _FIX_GUIDANCE_BY_CHECK: dict[str, GameBusFixGuidance] = {
             "Use the Level settings section.",
         ),
         fields_to_check=(
-            "Use this level as the start of the level structure. This corresponds to exported is_initial_level.",
-            "Next level when target is met on time. This corresponds to exported success_next.",
-            "For this checker, a terminal level is a level whose Next level when target is met on time points back to the same level.",
-            "The checker follows success transitions only. It does not use the failure transition for reachability.",
+            "Use this level as the start of the level structure. "
+            "This corresponds to exported is_initial_level.",
+            "Next level when target is met on time. "
+            "This corresponds to exported success_next.",
+            "Next level when target is not met on time. "
+            "This corresponds to exported failure_next.",
+            "For successful completion, a terminal level is a level whose "
+            "Next level when target is met on time points back to itself.",
         ),
         fix_steps=(
-            "If an initial level cannot reach a terminal level, open that initial level and follow Next level when target is met on time until the path reaches a terminal level.",
-            "If a terminal level is not reachable from any initial level, either connect an intended initial-level success path to it or change/remove its self-success transition if it should not be terminal.",
-            "Do not fix this by changing Target points; Target points is not used by the reachability checker.",
-            "Avoid accidental dead ends: every non-terminal level in a success path should point to another intended level.",
+            "If a level cannot be reached from any start level, inspect the "
+            "success and failure transitions of the preceding levels and connect "
+            "the intended path to it.",
+            "Fallback or at-risk levels normally need an incoming failure or "
+            "recovery transition from another reachable level.",
+            "If a start level has no successful completion path, follow "
+            "Next level when target is met on time from that start and make sure "
+            "the chain eventually reaches a terminal level.",
+            "If an unreachable level is obsolete and should no longer be part "
+            "of the progression, remove or reconfigure it instead of creating "
+            "an artificial transition.",
+            "Do not fix reachability by changing Target points; target "
+            "feasibility is checked separately.",
         ),
         verification=_GENERIC_VERIFICATION,
     ),
@@ -432,6 +445,29 @@ def _specific_guidance_markdown(issue: dict[str, Any]) -> str:
             ).as_markdown()
 
     if check == REACHABILITY:
+        if "progression level not reachable from any initial challenge" in message:
+            return GameBusFixGuidance(
+                title="Connect this unreachable level to the progression",
+                studio_location=(
+                    "Open the reported level using the finding URL.",
+                    "Open the neighbouring levels that should lead to this level.",
+                    "Use the Level settings section.",
+                ),
+                fields_to_check=(
+                    "Next level when target is met on time on preceding levels.",
+                    "Next level when target is not met on time on preceding levels.",
+                    "Use this level as the start of the level structure, if this level is actually intended to be another start.",
+                ),
+                fix_steps=(
+                    "First confirm where this level is intended to appear in the progression.",
+                    "If it is a normal level, make sure an earlier reachable level has a success transition to it.",
+                    "If it is a fallback or at-risk level, make sure the appropriate reachable level has a failure transition to it.",
+                    "Check the reported level's own success and failure transitions as well, but remember that outgoing transitions do not make a level reachable: another reachable level must lead into it.",
+                    "If the level is obsolete, remove or reconfigure it rather than adding an artificial transition.",
+                ),
+                verification=_GENERIC_VERIFICATION,
+            ).as_markdown()
+
         if "initial challenge without terminal challenge" in message:
             return GameBusFixGuidance(
                 title="Connect this initial level to a terminal success path",

@@ -39,8 +39,9 @@ CHECK_HINTS: dict[str, str] = {
         "Only for German: checks spelling for task and challenge names. May be slow."
     ),
     REACHABILITY: (
-        "Checks if progression levels can be reached from the configured start "
-        "level and if the progression can reach its intended end level."
+        "Checks if every progression level can be reached from a configured "
+        "start level through success or failure transitions, and if each start "
+        "level has a normal success path to an end level."
     ),
     CONSISTENCY: (
         "Checks if initial/start levels in progression visualizations fail back to themselves."
@@ -100,14 +101,21 @@ CHECK_EXPLANATIONS: dict[str, str] = {
         "derived from the parent visualization wave. Severity: low. Disabled by default."
     ),
     REACHABILITY: (
-        "**Reachability check** reads the `visualizations`, `challenges`, and `waves` sheets. "
-        "For each visualization, the check selects challenges whose `visualizations` value equals that "
-        "visualization id. Initial challenges are rows where `is_initial_level == 1`. Terminal challenges "
-        "are rows where `success_next` equals the challenge's own id. Reachability is computed by following "
-        "`success_next` links recursively; `failure_next` is not followed by this check. An initial challenge "
-        "is reported if no terminal challenge in the same visualization can be reached from it. A terminal "
-        "challenge is reported if it cannot be reached from any initial challenge in the same visualization. "
-        "Cycles are stopped using visited challenge ids. Severity: high."
+        "**Progression levels' reachability check** reads the "
+        "`visualizations`, `challenges`, and `waves` sheets. "
+        "It performs two related checks for each progression visualization. "
+        "First, it checks structural reachability: every configured level must "
+        "be reachable from at least one level marked as the start of the "
+        "structure. For this part, both `success_next` and `failure_next` "
+        "transitions are followed, because fallback and at-risk levels may be "
+        "legitimate branches of the progression. Transitions are followed only "
+        "within the current visualization. "
+        "Second, it checks successful completion: from each configured start "
+        "level, following `success_next` transitions must reach at least one "
+        "terminal level. A terminal level is represented by `success_next` "
+        "pointing back to the same challenge. "
+        "Cycles are handled using visited challenge ids. "
+        "Severity: high."
     ),
     CONSISTENCY: (
         "**Consistency check** reads the `visualizations`, `challenges`, and `waves` sheets. "
